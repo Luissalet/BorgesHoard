@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "borges-hoard"
+version = "0.1.0"
+description = "Local, citable index of the user's own documents (PDF, DOCX, Markdown, EPUB, HTML): hybrid search with page and section references, exposed to assistants through MCP."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Luissalet" }]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "httpx>=0.27",
+  "mcp>=1.10,<2",
+  "numpy>=1.26",
+  "fastembed>=0.7",
+  "pymupdf>=1.24",
+  "python-docx>=1.1",
+  "ebooklib>=0.18",
+  "beautifulsoup4>=4.12",
+  "lxml>=5",
+  "watchdog>=4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+gpu = ["fastembed-gpu>=0.7"]
+
+[project.scripts]
+borges-hoard = "borges.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["borges*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not model'"
+markers = ["model: downloads and runs the real embedding model (slow, needs network the first time)"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning", "ignore::FutureWarning"]

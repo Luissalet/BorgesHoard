@@ -1,0 +1,14 @@
+node_modules/
+borges/static/
+dist/
+data/
+models/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+!.env.example
+*.log
