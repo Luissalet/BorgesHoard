@@ -46,6 +46,7 @@ Open http://127.0.0.1:5184, go to **Colecciones** and add a folder. The first st
 | --- | --- | --- |
 | `BORGES_PORT` / `PORT` | `5184` | Preferred port; `PORT_STRICT=1` pins it, otherwise the first free port from there. |
 | `BORGES_DATA_DIR` | `<repo>/data` | Database (`borges-hoard.db`), `mcp-token`, `models/`. |
+| `BORGES_ALLOWED_HOSTS` | | Extra host names accepted behind a tunnel (see below). |
 | `BORGES_MODELS_DIR` | `<data>/models` | Where the embedding model is cached. |
 | `BORGES_EMBED` | `auto` | `auto` (fastembed), `fake` (tests), `none` (BM25 only). |
 | `BORGES_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Any fastembed text model. |
@@ -53,7 +54,9 @@ Open http://127.0.0.1:5184, go to **Colecciones** and add a folder. The first st
 | `BORGES_WATCH` | `1` | `0` disables folder watching. |
 | `BORGES_AUTOSTART` | `1` | `0` skips model preload and the initial reindex at startup. |
 
-The server binds 127.0.0.1 only and rejects non-local `Host`/`Origin` headers.
+### Access from your phone (behind a tunnel)
+
+The server binds 127.0.0.1 and only answers requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]`. To reach it from your phone through a tunnel that fronts the app (a private mesh network, a reverse proxy), list the extra host names in `BORGES_ALLOWED_HOSTS`, comma-separated, exact names or `*.suffix`: `BORGES_ALLOWED_HOSTS=my-pc.example,*.ts.net`. Port and letter case are ignored, and the `Origin` of API calls must resolve to one of those hosts too (any scheme or port). Cross-site *fetches* are still refused; opening the app from another page (a link, a bookmarklet, the share sheet) is a normal navigation and works.
 
 ## API
 

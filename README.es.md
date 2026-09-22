@@ -44,13 +44,16 @@ Abre http://127.0.0.1:5184, entra en **Colecciones** y añade una carpeta. La pr
 | --- | --- | --- |
 | `BORGES_PORT` / `PORT` | `5184` | Puerto preferido; `PORT_STRICT=1` lo fija, si no se usa el primero libre. |
 | `BORGES_DATA_DIR` | `<repo>/data` | Base de datos, `mcp-token`, `models/`. |
+| `BORGES_ALLOWED_HOSTS` | | Nombres de host adicionales aceptados detrás de un túnel (ver más abajo). |
 | `BORGES_MODELS_DIR` | `<data>/models` | Dónde se guarda el modelo. |
 | `BORGES_EMBED` | `auto` | `auto`, `fake` (pruebas) o `none` (solo palabras). |
 | `BORGES_MODEL` | MiniLM multilingüe | Cualquier modelo de texto de fastembed. |
 | `BORGES_WATCH` | `1` | `0` desactiva la vigilancia de carpetas. |
 | `BORGES_AUTOSTART` | `1` | `0` no precarga el modelo ni reindexa al arrancar. |
 
-El servidor solo escucha en 127.0.0.1 y rechaza cabeceras `Host`/`Origin` que no sean locales.
+### Acceso desde el móvil (a través de un túnel)
+
+El servidor escucha en 127.0.0.1 y solo responde a peticiones cuyo `Host` sea `localhost`, `127.0.0.1` o `[::1]`. Para entrar desde el móvil a través de un túnel que ponga la aplicación delante (una red privada, un proxy inverso), indicad los nombres de host adicionales en `BORGES_ALLOWED_HOSTS`, separados por comas, exactos o `*.sufijo`: `BORGES_ALLOWED_HOSTS=mi-pc.example,*.ts.net`. El puerto y las mayúsculas no importan, y el `Origin` de las llamadas a la API también tiene que corresponder a uno de esos hosts (con cualquier esquema o puerto). Las peticiones *fetch* desde otras webs se siguen rechazando; abrir la aplicación desde otra página (un enlace, un bookmarklet, el menú de compartir) es una navegación normal y funciona.
 
 ## Conectar el asistente (MCP)
 

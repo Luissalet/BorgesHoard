@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .guard import parse_allowed_hosts
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PORT = 5184
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -28,6 +30,7 @@ class Config:
     embed_providers: tuple[str, ...] = ()  # e.g. ("CUDAExecutionProvider",) with the gpu extra
     watch: bool = True  # start watchdog observers for collections with watch=1
     autostart: bool = True  # start the worker and preload the model with the app
+    allowed_hosts: tuple[str, ...] = ()  # extra Host values (exact or *.suffix) besides localhost
     data_dir_configured: bool = False
 
     @property
@@ -64,5 +67,6 @@ class Config:
             embed_providers=providers,
             watch=_env("BORGES_WATCH", "1") != "0",
             autostart=_env("BORGES_AUTOSTART", "1") != "0",
+            allowed_hosts=parse_allowed_hosts(_env("BORGES_ALLOWED_HOSTS")),
             data_dir_configured=bool(raw_dir),
         )

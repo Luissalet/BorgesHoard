@@ -1,4 +1,4 @@
-"""FastAPI application factory: local-only middleware, API routers, static SPA."""
+"""FastAPI application factory: request guard, API routers, static SPA."""
 
 from __future__ import annotations
 
@@ -14,11 +14,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import __version__
 from .api import ROUTERS
 from .config import Config
+from .guard import install_guard
 from .services import Services
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
-DEV_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"}
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -38,17 +37,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app = FastAPI(title="Borges's Hoard", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.config = config
 
-    @app.middleware("http")
-    async def local_only(request: Request, call_next):
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0]
-        if host not in LOCAL_HOSTS:
-            return JSONResponse({"error": "Only local access is allowed."}, status_code=403)
-        origin = request.headers.get("origin")
-        if origin and origin != f"http://{request.headers.get('host')}" and origin not in DEV_ORIGINS:
-            return JSONResponse({"error": "Origin not allowed."}, status_code=403)
-        if request.headers.get("sec-fetch-site") == "cross-site":
-            return JSONResponse({"error": "Cross-site requests are not allowed."}, status_code=403)
-        return await call_next(request)
+    install_guard(app, config.allowed_hosts)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException):
