@@ -1,16 +1,49 @@
 """FTS search, snippets, dense search with the fake embedder, and hybrid fusion ordering."""
 
 import numpy as np
+import pytest
 
 from borges.search import Search, fts_query, highlight, query_terms
 
 
 def test_fts_query_drops_stopwords_and_stems():
     and_q, or_q = fts_query("¿dónde leí sobre las hojas de los árboles?")
-    assert and_q == '"leí" AND "hoja"* AND "árbol"*'
+    assert and_q == '"leí"* AND "hoja"* AND "árbol"*'
     assert or_q.count(" OR ") == 2
     assert fts_query("de la") == ('"de" AND "la"', '"de" OR "la"')  # all stopwords: keep them
     assert fts_query("   ") == ("", "")
+
+
+def test_short_terms_match_whole_words_only():
+    assert fts_query("co")[0] == '"co"'  # no prefix expansion under 3 characters
+    assert fts_query("con")[0] == '"con"*'
+    assert fts_query("commits co")[0] == '"commit"* AND "co"'
+
+
+def test_short_terms_do_not_prefix_match_in_the_index(indexed):
+    services, _ = indexed
+    assert not services.search.bm25("co", 10, None)  # "combinaciones", "concebía", "committee" exist but "co" does not
+    assert services.search.bm25("com", 10, None)  # 3+ letters expand as a prefix
+
+
+def test_query_under_three_chars_is_refused(indexed, client, library):
+    services, _ = indexed
+    with pytest.raises(ValueError):
+        services.search.search("co", "bm25", 5)
+    with pytest.raises(ValueError):
+        services.search.search("  a ", "hybrid", 5)
+    response = client.get("/api/search", params={"q": "co"})
+    assert response.status_code == 400 and "3 characters" in response.json()["error"]
+    assert client.get("/api/search", params={"q": " x "}).status_code == 400
+
+
+def test_search_reports_took_ms_and_collapses_sections(indexed):
+    services, _ = indexed
+    result = services.search.search("Valdeniebla", "bm25", 20)
+    assert isinstance(result["took_ms"], float) and result["took_ms"] >= 0
+    keys = [(h["document_id"], h["unit_id"]) for h in result["hits"]]
+    assert len(keys) == len(set(keys))  # one hit per page/section
+    assert all("also" in h and "more" in h for h in result["hits"])
 
 
 def test_highlight_is_accent_insensitive_and_marks_whole_words():

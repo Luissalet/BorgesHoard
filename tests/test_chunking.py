@@ -1,6 +1,6 @@
 """Chunking: overlap, boundaries, page numbers and line numbers."""
 
-from borges.chunking import chunk_units
+from borges.chunking import INDEX_VERSION, MIN_CHUNK_CHARS, chunk_units, merge_small_units
 from borges.extract.base import Unit
 
 
@@ -48,3 +48,37 @@ def test_short_tail_merges_into_previous():
 
 def test_empty_units_yield_nothing():
     assert chunk_units([Unit(kind="page", number=1, text="   ")]) == []
+
+
+def test_small_sections_merge_into_the_following_one():
+    units = [
+        Unit(kind="section", number=1, title="Apuntes", text="Notas sueltas.", line_start=1),
+        Unit(kind="section", number=2, title="Pendiente", text="PENDIENTES 63–67.", line_start=3),
+        Unit(kind="section", number=3, title="Funes", text=sentence(1) * 4, line_start=6),
+        Unit(kind="section", number=4, title="Cierre", text="- PENDIENTES 118.", line_start=9),
+    ]
+    merged = merge_small_units(units)
+    assert [u.title for u in merged] == ["Funes"]
+    assert merged[0].number == 3 and merged[0].line_start == 6  # metadata of the larger part
+    assert merged[0].text.startswith("Apuntes\nNotas sueltas.\n\nPendiente\nPENDIENTES 63–67.")
+    assert merged[0].text.endswith("Cierre\n- PENDIENTES 118.")  # trailing short section goes into the previous one
+    chunks = chunk_units(merged)
+    assert all(len(c.text) >= MIN_CHUNK_CHARS for c in chunks)
+    assert not any(c.text.strip() == "- PENDIENTES 118." for c in chunks)
+
+
+def test_short_pages_merge_but_keep_page_numbers():
+    units = [Unit(kind="page", number=1, text="Título"), Unit(kind="page", number=2, text=sentence(2) * 5), Unit(kind="page", number=3, text=sentence(3) * 5)]
+    merged = merge_small_units(units)
+    assert [u.number for u in merged] == [2, 3] and merged[0].text.startswith("Título")
+
+
+def test_all_short_units_collapse_into_one():
+    units = [Unit(kind="section", number=1, title="A", text="corto"), Unit(kind="section", number=2, title="B", text="un poco más largo")]
+    merged = merge_small_units(units)
+    assert len(merged) == 1 and merged[0].title == "B" and "corto" in merged[0].text
+    assert merge_small_units([units[0]]) == [units[0]]  # a single unit is left alone
+
+
+def test_index_version_is_positive():
+    assert INDEX_VERSION >= 2

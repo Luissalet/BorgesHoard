@@ -8,9 +8,9 @@ Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo m
 
 - **Colecciones** = carpetas que eliges, con globs de inclusión/exclusión, activar/desactivar, vigilancia opcional de cambios (reindexa sola) y archivos de código opcionales.
 - **Extracción** por formato: PDF página a página (se conserva el número; los PDF escaneados sin capa de texto se listan y se marcan «necesita OCR», sin OCR en esta versión), DOCX con títulos → secciones (las tablas se añaden como filas), Markdown con títulos → secciones y números de línea, TXT, EPUB capítulo a capítulo, HTML por h1–h3, CSV (200 primeras filas).
-- **Troceado** con solapamiento (~900 caracteres, 150 de solape) que nunca cruza una página o sección; cada pasaje recuerda página, sección y línea.
+- **Troceado** con solapamiento (~900 caracteres, 150 de solape) que nunca cruza una página o sección; cada pasaje recuerda página, sección y línea. Las secciones o páginas de menos de ~200 caracteres (un «## Pendiente» de dos líneas, una portada) se funden con la siguiente conservando los datos de la parte grande, y nunca se emite un pasaje de menos de 120 caracteres salvo que sea el documento entero. Cada documento guarda la versión de las reglas de troceado: si cambian, la siguiente reindexación (que el indexador encola sola al arrancar) vuelve a trocear solo los documentos antiguos y la interfaz avisa «reindexación necesaria: N documentos» hasta terminar.
 - **Indexación incremental**: tamaño+fecha y después SHA-256; solo se vuelve a leer lo que cambia; lo borrado se purga. Corre en segundo plano con cola y progreso (archivos hechos/total, archivo actual, errores por archivo).
-- **Búsqueda híbrida**: BM25 de SQLite FTS5 (sin distinguir tildes, sin palabras vacías, plurales como prefijo) ∪ coseno sobre vectores float32 guardados en SQLite → fusión RRF. Modos «Híbrida», «Palabras» y «Significado».
+- **Búsqueda híbrida**: BM25 de SQLite FTS5 (sin distinguir tildes, sin palabras vacías; los términos de 3 o más letras se expanden como prefijo, los más cortos solo palabra entera) ∪ coseno sobre vectores float32 guardados en SQLite → fusión RRF. Modos «Híbrida», «Palabras» y «Significado». Se necesitan al menos 3 caracteres; un resultado por página o sección, con «ver más» para los demás; cada respuesta indica los milisegundos empleados.
 - **Embeddings**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (ONNX cuantizado, 384 dimensiones, ~240 MB, ~50 idiomas, funciona entre idiomas) mediante `fastembed`, descargado la primera vez en `data/models`. Hasta que está listo la búsqueda es solo por palabras y la interfaz lo dice.
 - **Interfaz**: Buscar, Biblioteca, Colecciones y Estado. Funciona en el móvil (a través de un túnel) con el pasaje a pantalla completa.
 
@@ -64,7 +64,7 @@ Herramientas: `library_search`, `library_read`, `library_document`, `library_doc
 ## Pruebas
 
 ```bat
-venv\Scripts\python -m pytest -q          # 44 pruebas, embedder falso, sin red
+venv\Scripts\python -m pytest -q          # embedder falso, sin red
 venv\Scripts\python -m pytest -m model    # descarga y usa el modelo real; comprueba una consulta en español
 ```
 

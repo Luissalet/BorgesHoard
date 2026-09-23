@@ -53,7 +53,10 @@ class Services:
     # ---------- lifecycle ----------
     def start(self) -> None:
         self.worker.start()
-        if self.config.autostart:
+        stale = self.documents.count_stale()
+        if stale:
+            log.info("%d documents were chunked with older rules: they will be re-chunked by the startup reindex", stale)
+        if self.config.autostart or stale:
             self._preload = threading.Thread(target=self._warm_up, name="borges-model", daemon=True)
             self._preload.start()
             self.worker.enqueue_all()
@@ -124,6 +127,7 @@ class Services:
             "disk_free_bytes": disk_free,
             "model": model,
             "chunks_pending_embedding": pending,
+            "reindex_needed": self.documents.count_stale(),
             "worker": self.worker.status(),
             "watching": self.watcher.watching(),
             "watch_error": self.watcher.error,

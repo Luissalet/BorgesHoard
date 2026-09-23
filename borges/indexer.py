@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .chunking import chunk_units
+from .chunking import INDEX_VERSION, chunk_units, merge_small_units
 from .embedder import Embedder
 from .extract import extract, kind_for
 from .store import Collection, CollectionStore, DocumentStore
@@ -162,12 +162,13 @@ class Indexer:
     def _index_file(self, collection: Collection, rel: str, path: Path, known: tuple | None, progress: Progress) -> None:
         stat = path.stat()
         size, mtime = stat.st_size, stat.st_mtime
-        if known and known[1] == size and abs(known[2] - mtime) < 1e-6 and known[4] == "ok":
+        current = bool(known) and known[4] == "ok" and known[5] >= INDEX_VERSION
+        if current and known[1] == size and abs(known[2] - mtime) < 1e-6:
             return  # unchanged (cheap check, no read)
         if size > MAX_FILE_BYTES:
             raise ValueError(f"file too large ({size // (1024 * 1024)} MB)")
         digest = file_hash(path)
-        if known and known[3] == digest and known[4] == "ok":
+        if current and known[3] == digest:
             self.documents.touch(known[0], size, mtime)  # touched but identical
             return
         kind = kind_for(path, code=collection.code) or "txt"
@@ -176,6 +177,7 @@ class Indexer:
         except Exception as error:
             self.documents.record_error(collection.id, rel, kind, size, mtime, digest, f"{type(error).__name__}: {error}")
             raise
+        extracted.units = merge_small_units(extracted.units)
         chunks = chunk_units(extracted.units)
         self.documents.replace(collection.id, rel, extracted, chunks, size, mtime, digest)
         progress.files_changed += 1

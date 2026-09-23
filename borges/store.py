@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .chunking import Chunk
+from .chunking import INDEX_VERSION, Chunk
 from .db import Database
 from .extract.base import Extracted
 
@@ -103,11 +103,21 @@ class DocumentStore:
         self.db = db
 
     # ---------- incremental bookkeeping ----------
-    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str]]:
-        """rel_path → (id, size, mtime, hash, status) for every document of a collection."""
+    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str, int]]:
+        """rel_path → (id, size, mtime, hash, status, index_version) for every document of a collection."""
         with self.db.lock:
-            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
-        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"]) for r in rows}
+            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status, index_version FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
+        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"], r["index_version"]) for r in rows}
+
+    def count_stale(self, collection_id: int | None = None) -> int:
+        """Documents chunked with older rules; they are re-chunked by the next reindex of their collection."""
+        sql = "SELECT COUNT(*) FROM documents WHERE index_version < ?"
+        params: list = [INDEX_VERSION]
+        if collection_id is not None:
+            sql += " AND collection_id = ?"
+            params.append(collection_id)
+        with self.db.lock:
+            return self.db.conn.execute(sql, params).fetchone()[0]
 
     def touch(self, document_id: int, size: int, mtime: float) -> None:
         with self.db.transaction() as conn:
@@ -139,16 +149,16 @@ class DocumentStore:
                 conn.execute("DELETE FROM units WHERE document_id = ?", (document_id,))
                 conn.execute(
                     """UPDATE documents SET title=?, kind=?, size=?, mtime=?, hash=?, pages=?, units=?, chunks=?, chars=?, needs_ocr=?,
-                       status='ok', error=NULL, indexed_at=? WHERE id=?""",
+                       status='ok', error=NULL, indexed_at=?, index_version=? WHERE id=?""",
                     (extracted.title, extracted.kind, size, mtime, file_hash, extracted.pages, len(extracted.units), len(chunks),
-                     extracted.chars, int(extracted.needs_ocr), time.time(), document_id),
+                     extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION, document_id),
                 )
             else:
                 cursor = conn.execute(
-                    """INSERT INTO documents(collection_id, rel_path, title, kind, size, mtime, hash, pages, units, chunks, chars, needs_ocr, status, indexed_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok',?)""",
+                    """INSERT INTO documents(collection_id, rel_path, title, kind, size, mtime, hash, pages, units, chunks, chars, needs_ocr, status, indexed_at, index_version)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok',?,?)""",
                     (collection_id, rel_path, extracted.title, extracted.kind, size, mtime, file_hash, extracted.pages, len(extracted.units),
-                     len(chunks), extracted.chars, int(extracted.needs_ocr), time.time()),
+                     len(chunks), extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION),
                 )
                 document_id = cursor.lastrowid
             unit_ids: list[int] = []

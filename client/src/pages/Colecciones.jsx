@@ -67,6 +67,9 @@ export default function Colecciones() {
         </div>
       </form>
 
+      {status?.reindex_needed > 0 && (
+        <p className="help mb-3" style={{ color: "var(--warn-ink)" }}>Reindexación necesaria: {status.reindex_needed} documentos se trocearon con reglas antiguas y se están actualizando en segundo plano.</p>
+      )}
       {collections && collections.length === 0 && (
         <Empty title="Aún no hay colecciones">Añade una carpeta con el formulario de arriba: apuntes, tesis, libros, artículos… Cualquier carpeta con PDF, DOCX, Markdown, EPUB, HTML o TXT.</Empty>
       )}

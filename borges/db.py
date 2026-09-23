@@ -91,6 +91,10 @@ MIGRATIONS: list[str] = [
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """,
+    # 2: chunking rules version per document (0 = indexed before the rule existed → re-chunked on next reindex)
+    """
+    ALTER TABLE documents ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

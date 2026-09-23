@@ -26,7 +26,7 @@ export default function Estado() {
         <Stat label="Documentos" value={status.counts.documents} help={`${status.counts.errors} con error · ${status.counts.needs_ocr} sin texto`} />
         <Stat label="Pasajes" value={status.counts.chunks} help={status.chunks_pending_embedding ? `${status.chunks_pending_embedding} sin embedding` : "todos con embedding"} />
         <Stat label="Índice en disco" value={bytes(status.db_bytes)} help={`libres ${bytes(status.disk_free_bytes)}`} />
-        <Stat label="Cola" value={w.queue_depth + (w.current ? 1 : 0)} help={w.busy ? "indexando ahora" : "en reposo"} />
+        <Stat label="Cola" value={w.queue_depth + (w.current ? 1 : 0)} help={status.reindex_needed ? `reindexación necesaria: ${status.reindex_needed} documentos` : w.busy ? "indexando ahora" : "en reposo"} />
       </div>
 
       <section className="panel-white mt-4">

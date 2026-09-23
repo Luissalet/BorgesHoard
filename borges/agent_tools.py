@@ -24,7 +24,7 @@ class Empty(BaseModel):
 
 
 class SearchArgs(BaseModel):
-    q: str = Field(..., min_length=1, max_length=500, description="What to look for, in the user's words (Spanish or English).")
+    q: str = Field(..., min_length=3, max_length=500, description="What to look for, in the user's words (Spanish or English); at least 3 characters.")
     collection: int | None = Field(None, ge=1, description="Restrict to one collection id (see library_collections).")
     mode: str = Field("hybrid", pattern="^(hybrid|bm25|dense)$", description="hybrid (default), bm25 (exact words) or dense (meaning).")
     limit: int = Field(8, ge=1, le=30)
@@ -90,7 +90,7 @@ def run_search(services: Services, args: SearchArgs) -> dict:
         note = "No passage matches. Try other words, mode bm25 for exact terms, or check library_status: the index may still be building."
     elif not result["dense_available"] and args.mode != "bm25":
         note = "The embedding model is not ready yet; results are keyword-only for now."
-    return {"query": args.q, "mode": result["mode"], "hits": hits, "count": len(hits), "note": note}
+    return {"query": args.q, "mode": result["mode"], "hits": hits, "count": len(hits), "took_ms": result["took_ms"], "note": note}
 
 
 def run_read(services: Services, args: ReadArgs) -> dict:
@@ -146,7 +146,9 @@ def run_status(services: Services, _: Empty) -> dict:
     s = services.status()
     worker = s["worker"]
     return {"model": s["model"], "counts": s["counts"], "collections": s["collections"], "indexing": worker["busy"], "queue": worker["queued"],
-            "current": worker["current"], "chunks_pending_embedding": s["chunks_pending_embedding"], "watching": s["watching"]}
+            "current": worker["current"], "chunks_pending_embedding": s["chunks_pending_embedding"], "reindex_needed": s["reindex_needed"],
+            "note": f"reindexación necesaria: {s['reindex_needed']} documentos (chunking rules changed; they are re-chunked in the background)" if s["reindex_needed"] else None,
+            "watching": s["watching"]}
 
 
 def run_similar(services: Services, args: SimilarArgs) -> dict:

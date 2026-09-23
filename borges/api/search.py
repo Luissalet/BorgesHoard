@@ -22,6 +22,8 @@ def search(
         raise HTTPException(404, "Collection not found.")
     try:
         return svc.search.search(q, mode, limit, collection)
+    except ValueError as error:  # query too short
+        raise HTTPException(400, str(error)) from error
     except RuntimeError as error:  # model failed to load mid-request
         raise HTTPException(503, str(error)) from error
 

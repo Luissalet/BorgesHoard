@@ -10,9 +10,9 @@ Part of the Hoard family (see `faustus-plugin.json`).
 
 - **Collections** = folders you choose, with include/exclude globs, enable/disable, optional folder watching (reindex on change) and optional code files.
 - **Extraction** per format: PDF page by page (page numbers kept; scanned PDFs without a text layer are listed and flagged `needs_ocr`, not OCR'd in v1), DOCX headings → sections (tables appended as rows), Markdown headings → sections with line numbers, TXT, EPUB chapter by chapter, HTML by h1–h3 (scripts/styles dropped), CSV first 200 rows.
-- **Chunking** with overlap (~900 chars, 150 overlap) that never crosses a page/section boundary; every chunk remembers page, section title and line.
+- **Chunking** with overlap (~900 chars, 150 overlap) that never crosses a page/section boundary; every chunk remembers page, section title and line. A page/section shorter than ~200 characters (a "## Pendiente" stub, a title page) is merged into the following one (or the previous one at the end) keeping the larger part's metadata, and no chunk under 120 characters is emitted unless it is the whole document. Chunking rules carry an `index_version` per document: when the rules change, the next reindex re-chunks only the stale documents, the worker queues it at startup, and status/UI say "reindexación necesaria: N documentos" until done.
 - **Incremental indexing**: size+mtime check, then SHA-256; only changed files are re-extracted; deleted files are purged. Runs in a background worker with a queue and live progress (files done/total, current file, per-file errors).
-- **Hybrid search**: SQLite FTS5 BM25 (diacritics-insensitive, stopwords dropped, light Spanish stemming as prefix) ∪ dense cosine over float32 vectors in SQLite → Reciprocal Rank Fusion. Modes `hybrid | bm25 | dense`. A reranker hook is left in `Search(reranker=...)`.
+- **Hybrid search**: SQLite FTS5 BM25 (diacritics-insensitive, stopwords dropped, terms of 3+ letters match as a prefix of their light Spanish stem, shorter terms whole-word only) ∪ dense cosine over float32 vectors in SQLite → Reciprocal Rank Fusion. Modes `hybrid | bm25 | dense`. Queries under 3 characters are refused (400). One hit per page/section; further hits from the same section come back in `also` (UI: "ver más"). Responses carry `took_ms`. A reranker hook is left in `Search(reranker=...)`.
 - **Embeddings**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (ONNX, quantized, 384 dims, ~240 MB on disk, ~50 languages, cross-lingual) through `fastembed`, downloaded on first use into `data/models`. Until it is ready search is keyword-only and the UI says so. Set `BORGES_EMBED=none` to disable dense search entirely.
 - **UI (Spanish)**: Buscar (big search box, mode toggle, collection filter, results with citation + highlighted snippet, passage side panel with prev/next page and "similar passages"), Biblioteca (documents by collection, type, size, pages, indexed date, OCR badge; document view with outline and page text), Colecciones (add folder, globs, switches, reindex, progress, errors), Estado (model, counts, queue, disk).
 
@@ -66,7 +66,7 @@ All JSON; errors are `{ "error": "..." }`.
 - `GET /api/status` → model state, counts (documents, chunks, errors, needs_ocr), per-collection counts, worker queue and progress, disk
 - `GET/POST /api/collections`, `GET/PATCH/DELETE /api/collections/{id}`, `POST /api/collections/{id}/reindex`, `GET /api/collections/{id}/progress`
 - `GET /api/documents?collection&q&status&limit&cursor` (cursor = last id), `GET /api/documents/{id}` (metadata + outline), `GET /api/documents/{id}/text?page=|section=|unit=` (text with prev/next)
-- `GET /api/search?q&collection&mode=hybrid|bm25|dense&limit` → hits with `citation`, `snippet` (with `<mark>`), `chunk_id`, `document_id`, `page`, `section`, `line`, `score`
+- `GET /api/search?q&collection&mode=hybrid|bm25|dense&limit` → `took_ms` and hits with `citation`, `snippet` (with `<mark>`), `chunk_id`, `document_id`, `page`, `section`, `line`, `score`, `also`/`more` (collapsed hits from the same section); `q` must have 3+ characters
 - `GET /api/similar/{chunk_id}`, `GET /api/chunks/{chunk_id}`
 - `GET /api/agent/tools` (catalog + instructions), `POST /api/agent/call` (Bearer token from `data/mcp-token`)
 
@@ -91,7 +91,7 @@ The instructions shipped with the tools tell the assistant to answer only from r
 ## Tests
 
 ```bat
-venv\Scripts\python -m pytest -q          # 44 tests, fake embedder, no network
+venv\Scripts\python -m pytest -q          # fake embedder, no network
 venv\Scripts\python -m pytest -m model    # downloads/loads the real model, checks a Spanish query
 ```
 

@@ -10,6 +10,9 @@ from .extract.base import Unit
 CHUNK_CHARS = 900  # ~220 Spanish tokens: inside the model's useful window
 OVERLAP_CHARS = 150
 MIN_TAIL = 200  # a trailing piece shorter than this is merged into the previous chunk
+MIN_UNIT_CHARS = 200  # a page/section shorter than this is merged into its neighbour
+MIN_CHUNK_CHARS = 120  # never emit a chunk shorter than this unless it is the whole document
+INDEX_VERSION = 2  # bump when chunking rules change: documents below it are re-chunked on the next reindex
 
 _BREAKS = re.compile(r"\n\n|\n|(?<=[.!?…;:])\s+|(?<=,)\s+|\s+")
 
@@ -52,6 +55,41 @@ def _split_points(text: str, start: int, limit: int) -> int:
     return start + best if best > 0 else limit
 
 
+def merge_small_units(units: list[Unit], minimum: int = MIN_UNIT_CHARS) -> list[Unit]:
+    """Merge units shorter than `minimum` into the following unit (or the previous one at the end).
+
+    The merged unit keeps the metadata (kind, number, title, line) of the larger part, so a two-line
+    "## Pendiente" section stops being its own chunk and its text rides along with its neighbour.
+    """
+    if len(units) <= 1:
+        return list(units)
+    pending: list[Unit] = []  # short units waiting to be attached to the next big one
+    out: list[Unit] = []
+    for unit in units:
+        if len(unit.text) < minimum:
+            pending.append(unit)
+            continue
+        if pending:
+            unit = _absorb(unit, pending, before=True)
+            pending = []
+        out.append(unit)
+    if pending:
+        if out:
+            out[-1] = _absorb(out[-1], pending, before=False)
+        else:  # every unit is short: keep the longest one's metadata
+            biggest = max(pending, key=lambda u: len(u.text))
+            rest = [u for u in pending if u is not biggest]
+            out.append(_absorb(biggest, rest, before=True))
+    return out
+
+
+def _absorb(main: Unit, others: list[Unit], before: bool) -> Unit:
+    """Return a copy of `main` whose text also contains `others` (heading lines kept as context)."""
+    parts = [(f"{u.title}\n{u.text}" if u.title else u.text) for u in others]
+    text = "\n\n".join([*parts, main.text] if before else [main.text, *parts])
+    return Unit(kind=main.kind, number=main.number, title=main.title, text=text, line_start=main.line_start)
+
+
 def chunk_unit(unit: Unit, unit_index: int, first_ordinal: int, size: int = CHUNK_CHARS, overlap: int = OVERLAP_CHARS) -> list[Chunk]:
     text = unit.text
     page = unit.number if unit.kind == "page" else None
@@ -82,7 +120,35 @@ def chunk_unit(unit: Unit, unit_index: int, first_ordinal: int, size: int = CHUN
 
 
 def chunk_units(units: list[Unit], size: int = CHUNK_CHARS, overlap: int = OVERLAP_CHARS) -> list[Chunk]:
+    """Chunk every unit (already merged with merge_small_units by the indexer) and drop tiny chunks."""
     out: list[Chunk] = []
     for index, unit in enumerate(units):
         out.extend(chunk_unit(unit, index, len(out), size, overlap))
-    return out
+    return _absorb_tiny_chunks(units, out)
+
+
+def _absorb_tiny_chunks(units: list[Unit], chunks: list[Chunk]) -> list[Chunk]:
+    """A chunk under MIN_CHUNK_CHARS is glued to its neighbour in the same unit (offsets widened)."""
+    if len(chunks) <= 1:
+        return chunks
+    result: list[Chunk] = []
+    for chunk in chunks:
+        if len(chunk.text) >= MIN_CHUNK_CHARS or not result or result[-1].unit_index != chunk.unit_index:
+            result.append(chunk)
+            continue
+        previous = result[-1]
+        previous.char_end = chunk.char_end
+        previous.text = units[previous.unit_index].text[previous.char_start : previous.char_end].strip()
+    # a tiny first chunk of a unit is merged into the next chunk of that unit
+    cleaned: list[Chunk] = []
+    for index, chunk in enumerate(result):
+        nxt = result[index + 1] if index + 1 < len(result) else None
+        if len(chunk.text) < MIN_CHUNK_CHARS and nxt is not None and nxt.unit_index == chunk.unit_index:
+            nxt.char_start = chunk.char_start
+            nxt.text = units[nxt.unit_index].text[nxt.char_start : nxt.char_end].strip()
+            nxt.line = chunk.line
+            continue
+        cleaned.append(chunk)
+    for ordinal, chunk in enumerate(cleaned):
+        chunk.ordinal = ordinal
+    return cleaned

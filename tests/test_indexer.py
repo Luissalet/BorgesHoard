@@ -117,3 +117,51 @@ def test_glob_translation():
     assert glob_to_regex("**/node_modules/**").match("x/node_modules/y/z.md")
     matcher = Matcher([], ["**/.*"])
     assert matcher.excludes_dir(".git") and matcher.excludes_dir("a/.obsidian") and not matcher.excludes_dir("a/b")
+
+
+def test_documents_below_index_version_are_rechunked_once(indexed):
+    services, collection = indexed
+    from borges.chunking import INDEX_VERSION
+
+    before = docs_by_path(services)
+    assert all(d["index_version"] == INDEX_VERSION for d in before.values())
+    with services.db.transaction() as conn:
+        conn.execute("UPDATE documents SET index_version = 0 WHERE rel_path IN ('apuntes.md', 'ensayo.html')")
+    assert services.documents.count_stale() == 2
+    assert services.status()["reindex_needed"] == 2
+    progress = run(services, collection)
+    assert progress.files_changed == 2  # only the stale ones were re-extracted, nothing else touched
+    after = docs_by_path(services)
+    assert services.documents.count_stale() == 0 and after["apuntes.md"]["index_version"] == INDEX_VERSION
+    assert after["apuntes.md"]["indexed_at"] > before["apuntes.md"]["indexed_at"]
+    assert after["catalogo.csv"]["indexed_at"] == before["catalogo.csv"]["indexed_at"]
+    assert run(services, collection).files_changed == 0
+
+
+def test_stale_documents_are_reindexed_at_startup(tmp_path, library):
+    from borges.services import Services
+    from conftest import make_config
+
+    first = Services(make_config(tmp_path))
+    first.worker.start()
+    first.add_collection("Pruebas", str(library), [], None, False, False)
+    assert first.worker.wait_idle(60)
+    with first.db.transaction() as conn:
+        conn.execute("UPDATE documents SET index_version = 0")
+    first.stop()
+
+    second = Services(make_config(tmp_path))  # autostart=False, but stale documents still trigger the reindex
+    second.start()
+    try:
+        assert second.worker.wait_idle(60)
+        assert second.documents.count_stale() == 0
+    finally:
+        second.stop()
+
+
+def test_short_sections_are_merged_in_the_index(indexed):
+    services, _ = indexed
+    doc = next(d for d in docs_by_path(services).values() if d["rel_path"] == "apuntes.md")
+    outline = services.queries.document(doc["id"])["outline"]
+    assert [u["title"] for u in outline] == ["Funes", "El jardín", "Biblioteca"]  # the two-line intro rode into Funes
+    assert "Notas sueltas" in services.queries.unit(doc["id"], section=2)["text"]

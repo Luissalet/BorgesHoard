@@ -108,6 +108,7 @@ export default function App() {
               <div className="text-[13px]"><span className="num font-semibold">{status.counts.documents}</span> documentos · <span className="num">{status.counts.chunks}</span> pasajes</div>
               <div className="help mt-2 text-[11px]">Modelo</div>
               <div className="text-[13px]">{MODEL_STATE[model?.state] || model?.state}{busy ? " · indexando…" : ""}</div>
+              {status.reindex_needed > 0 && <div className="help mt-2 text-[11px]" style={{ color: "var(--warn-ink)" }}>Reindexación necesaria: {status.reindex_needed} documentos</div>}
             </div>
           )}
         </aside>

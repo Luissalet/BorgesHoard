@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 import unicodedata
 from pathlib import Path
 from typing import Callable
@@ -16,6 +17,9 @@ from .queries import Queries, citation
 from .store import DocumentStore
 
 RRF_K = 60
+MIN_QUERY_CHARS = 3  # shorter queries are refused
+PREFIX_MIN_CHARS = 3  # terms shorter than this match whole words only (no prefix expansion)
+PER_SECTION = 1  # hits shown per (document, page/section); the rest go into `also`
 CANDIDATES = 40  # per retriever before fusion
 DENSE_MIN_SCORE = 0.2  # cosine below this is noise for MiniLM-class models
 SNIPPET_CHARS = 240
@@ -57,17 +61,17 @@ def content_words(q: str) -> list[str]:
 
 
 def fts_query(q: str) -> tuple[str, str]:
-    """(AND query, OR query) for FTS5 from free text; stopwords dropped, words of 4+ letters match as prefixes of their stem."""
+    """(AND query, OR query) for FTS5; stopwords dropped, terms of PREFIX_MIN_CHARS+ letters match as prefixes of their stem."""
     words = content_words(q)
     if not words:
         return "", ""
-    quoted = [f'"{stem(w)}"*' if len(w) >= 4 else f'"{w}"' for w in words]
+    quoted = [f'"{stem(w)}"*' if len(w) >= PREFIX_MIN_CHARS else f'"{w}"' for w in words]
     return " AND ".join(quoted), " OR ".join(quoted)
 
 
 def query_terms(q: str) -> list[str]:
     """Folded stems used to highlight matches at word starts."""
-    return [fold(stem(w)) if len(w) >= 4 else fold(w) for w in content_words(q)]
+    return [fold(stem(w)) if len(w) >= PREFIX_MIN_CHARS else fold(w) for w in content_words(q)]
 
 
 def highlight(text: str, terms: list[str], window: int = SNIPPET_CHARS) -> str:
@@ -195,8 +199,9 @@ class Search:
 
     def search(self, q: str, mode: str = "hybrid", limit: int = 10, collection_id: int | None = None) -> dict:
         q = q.strip()
-        if not q:
-            return {"query": q, "mode": mode, "hits": [], "dense_available": self.embedder.ready()}
+        if len(q) < MIN_QUERY_CHARS:
+            raise ValueError(f"The query needs at least {MIN_QUERY_CHARS} characters.")
+        started = time.perf_counter()
         dense_ok = self.embedder.ready()
         if mode == "dense" and not dense_ok:
             mode = "bm25"
@@ -210,7 +215,7 @@ class Search:
         hits = self._dedupe(hits)[:limit]
         if self.reranker is not None:
             hits = self.reranker(q, hits)
-        return {"query": q, "mode": mode, "hits": hits, "dense_available": dense_ok}
+        return {"query": q, "mode": mode, "hits": hits, "dense_available": dense_ok, "took_ms": round((time.perf_counter() - started) * 1000, 1)}
 
     def similar(self, chunk_id: int, limit: int = 10) -> list[dict]:
         chunk = self.queries.chunk(chunk_id)
@@ -247,13 +252,21 @@ class Search:
         return hits
 
     @staticmethod
-    def _dedupe(hits: list[dict]) -> list[dict]:
-        """Keep at most two hits per (document, unit) so one long page cannot fill the list."""
-        seen: dict[tuple[int, int], int] = {}
+    def _dedupe(hits: list[dict], per_section: int = PER_SECTION) -> list[dict]:
+        """One hit per (document, page/section); further hits from the same section ride in `also` (up to 3)."""
+        first: dict[tuple[int, int], dict] = {}
         out = []
         for hit in hits:
             key = (hit["document_id"], hit["unit_id"])
-            seen[key] = seen.get(key, 0) + 1
-            if seen[key] <= 2:
+            head = first.get(key)
+            if head is None:
+                hit["also"] = []
+                hit["more"] = 0
+                first[key] = hit
                 out.append(hit)
+            elif len(head["also"]) < 3 and per_section == 1:
+                head["also"].append({k: hit[k] for k in ("chunk_id", "snippet", "score", "line")})
+                head["more"] += 1
+            else:
+                head["more"] += 1
         return out
