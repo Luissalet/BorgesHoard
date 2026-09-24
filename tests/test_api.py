@@ -15,7 +15,10 @@ def add_library(client, library, **extra):
 
 
 def test_health_and_local_only(client):
-    assert client.get("/api/health").json() == {"service": "borges-hoard", "version": "0.1.0", "dataDirConfigured": True}
+    health = client.get("/api/health").json()
+    family_block = health.pop("hoard_link")
+    assert health == {"service": "borges-hoard", "version": "0.1.0", "dataDirConfigured": True}
+    assert family_block["family"] and family_block["app"] == "borges" and "events" in family_block
     assert client.get("/api/health", headers={"host": "evil.example"}).status_code == 403
     assert client.get("/api/status", headers={"origin": "http://evil.example"}).status_code == 403
     assert client.get("/api/nope").status_code == 404
