@@ -33,4 +33,9 @@ export const api = {
   search: (params) => request("GET", "/api/search", { params }),
   similar: (chunkId, limit = 8) => request("GET", `/api/similar/${chunkId}`, { params: { limit } }),
   chunk: (chunkId) => request("GET", `/api/chunks/${chunkId}`),
+  sources: () => request("GET", "/api/sources"),
+  addSource: (body) => request("POST", "/api/sources", { body }),
+  updateSource: (id, patch) => request("PATCH", `/api/sources/${id}`, { body: patch }),
+  removeSource: (id) => request("DELETE", `/api/sources/${id}`),
+  syncSource: (id) => request("POST", `/api/sources/${id}/sync`),
 };

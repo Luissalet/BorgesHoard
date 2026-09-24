@@ -18,6 +18,7 @@ export default function Buscar() {
   const [q, setQ] = useState("");
   const [mode, setMode] = useState("hybrid");
   const [collection, setCollection] = useState("");
+  const [source, setSource] = useState("");
   const [collections, setCollections] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -32,14 +33,14 @@ export default function Buscar() {
     input.current?.focus();
   }, []);
 
-  const run = async (query = q, m = mode, c = collection) => {
+  const run = async (query = q, m = mode, c = collection, src = source) => {
     if (query.trim().length < MIN_CHARS) {
       setResult(null);
       return;
     }
     setLoading(true);
     try {
-      setResult(await api.search({ q: query, mode: m, collection: c, limit: 20 }));
+      setResult(await api.search({ q: query, mode: m, collection: c, source: src || undefined, limit: 20 }));
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -55,10 +56,11 @@ export default function Buscar() {
   };
   const change = (setter) => (value) => {
     setter(value);
-    const next = { mode, collection };
+    const next = { mode, collection, source };
     if (setter === setMode) next.mode = value;
-    else next.collection = value;
-    run(q, next.mode, next.collection);
+    else if (setter === setCollection) next.collection = value;
+    else next.source = value;
+    run(q, next.mode, next.collection, next.source);
   };
 
   const empty = status && status.counts.documents === 0;
@@ -91,6 +93,11 @@ export default function Buscar() {
             {collections.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
+          </select>
+          <select className="field" style={{ width: "auto" }} value={source} onChange={(e) => change(setSource)(e.target.value)} aria-label="Fuente">
+            <option value="">Documentos y chats</option>
+            <option value="folder">Solo documentos</option>
+            <option value="faustus">Solo chats (Faustus)</option>
           </select>
         </div>
       </form>
@@ -130,9 +137,14 @@ export default function Buscar() {
                 <div className="flex items-center gap-3">
                   <TypeIcon kind={h.kind} />
                   <div className="min-w-0 flex-1">
-                    <div className="cite truncate text-[14px]">{h.citation}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="cite truncate text-[14px]">{h.citation}</div>
+                      {h.kind === "chat" && <span className="chip chip-accent">{h.date || "chat"}</span>}
+                    </div>
                     <div className="help truncate" title={`${h.collection} › ${h.rel_path}${h.section ? ` › ${h.section}` : ""}`}>
-                      {h.collection} › {h.rel_path}{h.section && h.kind !== "md" && h.kind !== "html" && h.kind !== "docx" ? ` › ${h.section}` : ""}{h.line ? ` · l. ${h.line}` : ""}
+                      {h.kind === "chat"
+                        ? `${h.collection}${h.project ? ` › ${h.project}` : ""}`
+                        : `${h.collection} › ${h.rel_path}${h.section && h.kind !== "md" && h.kind !== "html" && h.kind !== "docx" ? ` › ${h.section}` : ""}${h.line ? ` · l. ${h.line}` : ""}`}
                     </div>
                   </div>
                   <span className="help shrink-0 text-[11px]">abrir pasaje →</span>

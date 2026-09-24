@@ -6,12 +6,14 @@ import Buscar from "./pages/Buscar.jsx";
 import Biblioteca from "./pages/Biblioteca.jsx";
 import Documento from "./pages/Documento.jsx";
 import Colecciones from "./pages/Colecciones.jsx";
+import Fuentes from "./pages/Fuentes.jsx";
 import Estado from "./pages/Estado.jsx";
 
 const PAGES = [
   { path: "buscar", label: "Buscar", icon: "M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4", component: Buscar },
   { path: "biblioteca", label: "Biblioteca", icon: "M4 5h5v15H4zM10 5h5v15h-5zM16 6l4-1 3 14-4 1z", component: Biblioteca },
   { path: "colecciones", label: "Colecciones", icon: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z", component: Colecciones },
+  { path: "fuentes", label: "Fuentes", icon: "M4 4h16v4H4zM4 10h10v4H4zM4 16h16v4H4z", component: Fuentes },
   { path: "estado", label: "Estado", icon: "M4 20V10m5 10V4m5 16v-8m5 8V7", component: Estado },
 ];
 

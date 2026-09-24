@@ -14,8 +14,14 @@ log = logging.getLogger("borges.worker")
 
 
 class IndexWorker:
-    def __init__(self, indexer: Indexer, collections: CollectionStore):
-        self.indexer = indexer
+    """`indexers` maps a collection's `kind` (folder | faustus) to the object that indexes it.
+
+    Every indexer implements `index_collection(collection, progress, cancel) -> Progress`, so the run
+    loop below never needs to know what kind of source it is dispatching to.
+    """
+
+    def __init__(self, indexers: dict[str, Indexer] | Indexer, collections: CollectionStore):
+        self.indexers = indexers if isinstance(indexers, dict) else {"folder": indexers}
         self.collections = collections
         self._queue: queue.Queue[int | None] = queue.Queue()
         self._queued: set[int] = set()
@@ -116,9 +122,15 @@ class IndexWorker:
                 if collection is None:
                     progress.phase = "cancelled"
                 else:
-                    self.indexer.index_collection(collection, progress, event)
-                    if progress.phase == "error":
+                    indexer = self.indexers.get(collection.kind)
+                    if indexer is None:
+                        progress.phase = "error"
+                        progress.message = f"No indexer registered for source kind '{collection.kind}'."
                         self.last_error = progress.message
+                    else:
+                        indexer.index_collection(collection, progress, event)
+                        if progress.phase == "error":
+                            self.last_error = progress.message
             except Exception as error:  # pragma: no cover - defensive
                 log.exception("worker crashed on %s", item)
                 self.last_error = str(error)

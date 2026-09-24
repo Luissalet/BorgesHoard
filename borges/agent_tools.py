@@ -16,7 +16,8 @@ Always cite: give the document title or file name plus the page or section (the 
 Never claim a document says something that is not in the text you retrieved. If nothing relevant comes back, say that the library has no passage about it, and suggest which collection or words to try.
 Prefer mode hybrid; use mode bm25 for exact words, names or codes, and dense for paraphrased ideas. Filter by collection when the user names one.
 A document with needs_ocr is a scanned PDF without text: it is listed but cannot be searched; say so if it looks relevant.
-library_add_collection and library_reindex change the index; call them only when the user asks. Indexing runs in the background: library_status shows the queue."""
+library_add_collection and library_reindex change the index; call them only when the user asks. Indexing runs in the background: library_status shows the queue.
+The library can also hold the user's own past Faustus conversations (a `faustus` source), indexed as one document per chat. For questions about past conversations or decisions ("¿qué dijimos?", "¿qué decidimos?", "¿en qué quedamos?", "what did we decide", "what did we say about"), call library_search with source="faustus" (optionally since/until for a date range), or chats_recent to browse recent chats, then quote the `citation` field verbatim — it already reads like `[chat «Title» · date · turno N]`."""
 
 
 class Empty(BaseModel):
@@ -28,6 +29,9 @@ class SearchArgs(BaseModel):
     collection: int | None = Field(None, ge=1, description="Restrict to one collection id (see library_collections).")
     mode: str = Field("hybrid", pattern="^(hybrid|bm25|dense)$", description="hybrid (default), bm25 (exact words) or dense (meaning).")
     limit: int = Field(8, ge=1, le=30)
+    source: str | None = Field(None, pattern="^(folder|faustus)$", description="Restrict to one source kind: 'faustus' for the user's past conversations, 'folder' for documents.")
+    since: str | None = Field(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date (YYYY-MM-DD): only chats/documents dated on or after this.")
+    until: str | None = Field(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date (YYYY-MM-DD): only chats/documents dated on or before this.")
 
 
 class ReadArgs(BaseModel):
@@ -58,6 +62,11 @@ class ReindexArgs(BaseModel):
     collection_id: int = Field(..., ge=1)
 
 
+class ChatsRecentArgs(BaseModel):
+    limit: int = Field(10, ge=1, le=100)
+    project: str | None = Field(None, max_length=200, description="Restrict to one Faustus project/folder name.")
+
+
 class AddCollectionArgs(BaseModel):
     path: str = Field(..., min_length=1, max_length=2000, description="Absolute folder path on the user's PC; it must exist.")
     name: str = Field("", max_length=200, description="Display name (defaults to the folder name).")
@@ -76,14 +85,15 @@ class Tool:
 
 
 def _hit(h: dict) -> dict:
-    keys = ("chunk_id", "document_id", "collection_id", "collection", "title", "kind", "rel_path", "page", "section", "line", "score", "citation", "snippet")
-    return {k: h[k] for k in keys}
+    keys = ("chunk_id", "document_id", "collection_id", "collection", "source_kind", "title", "kind", "rel_path",
+            "page", "section", "line", "date", "project", "score", "citation", "snippet")
+    return {k: h[k] for k in keys if k in h}
 
 
 def run_search(services: Services, args: SearchArgs) -> dict:
     if args.collection is not None and services.collections.get(args.collection) is None:
         raise LookupError(f"Collection {args.collection} does not exist.")
-    result = services.search.search(args.q, args.mode, args.limit, args.collection)
+    result = services.search.search(args.q, args.mode, args.limit, args.collection, source=args.source, since=args.since, until=args.until)
     hits = [_hit(h) for h in result["hits"]]
     note = None
     if not hits:
@@ -136,7 +146,7 @@ def run_documents(services: Services, args: DocumentsArgs) -> dict:
 def run_collections(services: Services, _: Empty) -> dict:
     counts = {c["id"]: c for c in services.documents.counts()["collections"]}
     out = []
-    for c in services.collections.list():
+    for c in services.collections.list_by_kind("folder"):
         stats = counts.get(c.id, {})
         out.append({**c.to_dict(), "documents": stats.get("documents", 0), "chunks": stats.get("chunks", 0), "errors": stats.get("errors", 0)})
     return {"collections": out}
@@ -161,6 +171,11 @@ def run_reindex(services: Services, args: ReindexArgs) -> dict:
     return {"ok": True, "queued": queued, "note": "Queued." if queued else "Already indexing or queued."}
 
 
+def run_chats_recent(services: Services, args: ChatsRecentArgs) -> dict:
+    chats = services.queries.recent_chats(args.limit, args.project)
+    return {"chats": chats, "count": len(chats)}
+
+
 def run_add_collection(services: Services, args: AddCollectionArgs) -> dict:
     collection = services.add_collection(args.name, args.path, args.include, args.exclude, args.watch, False)
     return {"ok": True, "collection": collection.to_dict(), "note": "Indexing has started in the background; library_status shows progress."}
@@ -171,7 +186,7 @@ def _ann(read_only: bool, destructive: bool = False, idempotent: bool | None = N
 
 
 TOOLS: list[Tool] = [
-    Tool("library_search", "Search the user's own documents (PDF, DOCX, Markdown, text, EPUB, HTML) and get passages with an exact citation («Title», p. 12 or file.md § Section), a highlighted snippet, chunk_id and document_id. Hybrid BM25 + multilingual embeddings by default. First step for 'where did I read/write about X'.\nSinónimos: buscar, dónde leí, dónde escribí, apuntes, mis documentos, buscar en mis PDF, cita, página, manuscrito, capítulo, biblioteca, libro, tesis, máster, notas, artículo.", SearchArgs, _ann(True), run_search),
+    Tool("library_search", "Search your documents and past Faustus chats; exact citation, snippet, ids. Busca documentos y chats.\nHybrid BM25 + multilingual embeddings. Filter source='faustus' for chats, since/until for a date range; citations read «Title», p. 12 / file.md § Section / [chat «Title» · date · turno N].\nSinónimos: buscar, dónde leí, dónde escribí, qué dijimos, qué decidimos, apuntes, mis documentos, mis chats, conversaciones, cita, página, biblioteca, libro, tesis, notas, artículo.", SearchArgs, _ann(True), run_search),
     Tool("library_read", "Read the exact text of one page or section of a document (by page, section ordinal or a chunk_id from library_search), with prev/next pointers. Use it before quoting so the quote is verbatim.\nSinónimos: leer, página, sección, capítulo, pasaje, texto completo, cita textual, qué dice, manuscrito, libro, apuntes.", ReadArgs, _ann(True), run_read),
     Tool("library_document", "Metadata and outline (pages or sections with titles) of one document.\nSinónimos: documento, índice, esquema, capítulos, páginas, libro, tesis, ficha.", DocumentArgs, _ann(True), run_document),
     Tool("library_documents", "List indexed documents, optionally filtered by collection or by title/file name. Paginated with next_cursor.\nSinónimos: mis documentos, lista, biblioteca, archivos, libros, PDF, qué tengo, apuntes.", DocumentsArgs, _ann(True), run_documents),
@@ -180,6 +195,7 @@ TOOLS: list[Tool] = [
     Tool("library_similar", "Passages similar in meaning to a given chunk (from library_search), across the whole library. Good for 'where else did I write about this'.\nSinónimos: parecido, similar, relacionado, dónde más, otros pasajes, misma idea.", SimilarArgs, _ann(True), run_similar),
     Tool("library_reindex", "Queue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, _ann(False, False, True), run_reindex),
     Tool("library_add_collection", "Add a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, _ann(False, False, True), run_add_collection),
+    Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, _ann(True), run_chats_recent),
 ]
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}

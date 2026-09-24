@@ -171,7 +171,7 @@ Plano por defecto. Sombras solo en el aviso flotante (toast). El resultado selec
 
 ## Shapes
 
-Campos 6px, controles 7px, paneles 8px, el buscador principal 9px, chips 5px. Bordes de 1px. Iconos SVG de línea; los tipos de archivo son monogramas de texto (PDF, DOC, MD, EPUB…) sobre `accent-soft`. Sin imágenes raster.
+Campos 6px, controles 7px, paneles 8px, el buscador principal 9px, chips 5px. Bordes de 1px. Iconos SVG de línea; los tipos de archivo son monogramas de texto (PDF, DOC, MD, EPUB, CHAT…) sobre `accent-soft`. Sin imágenes raster. Un resultado de chat de Faustus añade además un chip con la fecha de la conversación junto a la cita.
 
 ## Components
 
@@ -185,7 +185,7 @@ Etiqueta encima, ayuda debajo. El buscador principal es más grande (16px, 12px 
 
 ### Navigation
 
-Cuatro secciones: Buscar, Biblioteca, Colecciones, Estado. Rutas por hash (`#/buscar`, `#/biblioteca/12`). La activa usa `aria-current` con fondo `nav-active`.
+Cinco secciones: Buscar, Biblioteca, Colecciones, Fuentes, Estado. Rutas por hash (`#/buscar`, `#/biblioteca/12`). La activa usa `aria-current` con fondo `nav-active`. Fuentes reutiliza el patrón de tarjeta de Colecciones (formulario arriba, tarjetas con progreso abajo) para conectar un Faustus: URL, token o usuario/contraseña, proyectos a incluir, intervalo de sondeo, activar/desactivar, «Sincronizar ahora».
 
 ### Chips
 

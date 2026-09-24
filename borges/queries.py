@@ -2,25 +2,44 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .db import Database
 
-KIND_LABEL = {"pdf": "PDF", "docx": "Word", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código"}
+KIND_LABEL = {"pdf": "PDF", "docx": "Word", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código",
+              "chat": "Chat"}
+
+
+def _meta(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
 
 
 def document_json(row) -> dict:
+    keys = row.keys()
     return {
         "id": row["id"], "collection_id": row["collection_id"], "rel_path": row["rel_path"], "title": row["title"], "kind": row["kind"],
         "size": row["size"], "mtime": row["mtime"], "pages": row["pages"], "units": row["units"], "chunks": row["chunks"], "chars": row["chars"],
         "needs_ocr": bool(row["needs_ocr"]), "status": row["status"], "error": row["error"], "indexed_at": row["indexed_at"],
         "index_version": row["index_version"], "filename": Path(row["rel_path"]).name,
+        "meta": _meta(row["meta"]) if "meta" in keys else {},
     }
 
 
 def citation(doc: dict, page: int | None, section: str, line: int | None = None) -> str:
-    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3."""
+    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N]."""
     kind = doc["kind"]
+    if kind == "chat":
+        meta = _meta(doc.get("meta"))
+        title = meta.get("title") or doc["title"]
+        date = meta.get("date") or ""
+        parts = [p for p in (date, section) if p]
+        return f"[chat «{title}»" + (f" · {' · '.join(parts)}]" if parts else "]")
     if kind == "pdf":
         return f"«{doc['title']}», p. {page}" if page else f"«{doc['title']}»"
     if kind == "epub":
@@ -120,7 +139,8 @@ class Queries:
         with self.db.lock:
             rows = self.db.conn.execute(
                 f"""SELECT c.id, c.document_id, c.unit_id, c.ordinal, c.page, c.section, c.line, c.char_start, c.char_end, c.text,
-                           d.title, d.kind, d.rel_path, d.collection_id, col.name AS collection, col.path AS collection_path
+                           d.title, d.kind, d.rel_path, d.collection_id, d.meta AS doc_meta, col.name AS collection, col.path AS collection_path,
+                           col.kind AS source_kind
                     FROM chunks c JOIN documents d ON d.id = c.document_id JOIN collections col ON col.id = d.collection_id
                     WHERE c.id IN ({marks})""",
                 ids,
@@ -128,6 +148,39 @@ class Queries:
         return {r["id"]: dict(r) for r in rows}
 
     def collection_chunk_ids(self, collection_id: int) -> set[int]:
+        return self.chunk_ids_for_collections({collection_id})
+
+    def chunk_ids_for_collections(self, collection_ids: set[int]) -> set[int]:
+        if not collection_ids:
+            return set()
+        marks = ",".join("?" for _ in collection_ids)
         with self.db.lock:
-            rows = self.db.conn.execute("SELECT c.id FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.collection_id = ?", (collection_id,)).fetchall()
+            rows = self.db.conn.execute(
+                f"SELECT c.id FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.collection_id IN ({marks})",
+                list(collection_ids),
+            ).fetchall()
         return {r["id"] for r in rows}
+
+    def recent_chats(self, limit: int = 10, project: str | None = None) -> list[dict]:
+        """The most recently indexed Faustus conversations, newest first — for the `chats_recent` tool."""
+        with self.db.lock:
+            rows = self.db.conn.execute(
+                """SELECT d.id, d.title, d.meta, d.indexed_at, col.id AS collection_id, col.name AS collection
+                   FROM documents d JOIN collections col ON col.id = d.collection_id
+                   WHERE d.kind = 'chat' AND d.status = 'ok' ORDER BY d.indexed_at DESC LIMIT ?""",
+                (max(limit, 1) * 5,),  # over-fetch: project filtering happens in Python below
+            ).fetchall()
+        out = []
+        for row in rows:
+            meta = _meta(row["meta"])
+            if project and (meta.get("project") or "") != project:
+                continue
+            out.append({
+                "document_id": row["id"], "title": meta.get("title") or row["title"], "date": meta.get("date"),
+                "project": meta.get("project") or None, "conversation_id": meta.get("conversation_id"),
+                "model": meta.get("model"), "collection": row["collection"], "collection_id": row["collection_id"],
+                "indexed_at": row["indexed_at"],
+            })
+            if len(out) >= limit:
+                break
+        return out

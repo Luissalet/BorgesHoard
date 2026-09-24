@@ -39,7 +39,9 @@ def _with_progress(svc, collection) -> dict:
 @router.get("")
 def list_collections(request: Request):
     svc = services(request)
-    return {"collections": [_with_progress(svc, c) for c in svc.collections.list()]}
+    # Non-folder sources (e.g. Faustus) live in /api/sources; this endpoint's shape (path, include, watch…)
+    # is folder-specific and existing clients don't expect anything else in it.
+    return {"collections": [_with_progress(svc, c) for c in svc.collections.list_by_kind("folder")]}
 
 
 @router.post("", status_code=201)
@@ -52,10 +54,17 @@ def add_collection(request: Request, body: CollectionIn):
     return _with_progress(svc, collection)
 
 
+def _get_folder(svc, collection_id: int):
+    collection = svc.collections.get(collection_id)
+    if collection is None or collection.kind != "folder":
+        return None
+    return collection
+
+
 @router.get("/{collection_id}")
 def get_collection(request: Request, collection_id: int):
     svc = services(request)
-    collection = svc.collections.get(collection_id)
+    collection = _get_folder(svc, collection_id)
     if collection is None:
         raise HTTPException(404, "Collection not found.")
     return _with_progress(svc, collection)
@@ -64,7 +73,7 @@ def get_collection(request: Request, collection_id: int):
 @router.patch("/{collection_id}")
 def patch_collection(request: Request, collection_id: int, body: CollectionPatch):
     svc = services(request)
-    if svc.collections.get(collection_id) is None:
+    if _get_folder(svc, collection_id) is None:
         raise HTTPException(404, "Collection not found.")
     collection = svc.update_collection(collection_id, body.model_dump())
     return _with_progress(svc, collection)
@@ -72,14 +81,18 @@ def patch_collection(request: Request, collection_id: int, body: CollectionPatch
 
 @router.delete("/{collection_id}")
 def delete_collection(request: Request, collection_id: int):
-    if not services(request).remove_collection(collection_id):
+    svc = services(request)
+    if _get_folder(svc, collection_id) is None:
         raise HTTPException(404, "Collection not found.")
+    svc.remove_collection(collection_id)
     return {"ok": True}
 
 
 @router.post("/{collection_id}/reindex")
 def reindex(request: Request, collection_id: int):
     svc = services(request)
+    if _get_folder(svc, collection_id) is None:
+        raise HTTPException(404, "Collection not found.")
     try:
         queued = svc.reindex(collection_id)
     except LookupError as error:
@@ -90,6 +103,6 @@ def reindex(request: Request, collection_id: int):
 @router.get("/{collection_id}/progress")
 def progress(request: Request, collection_id: int):
     svc = services(request)
-    if svc.collections.get(collection_id) is None:
+    if _get_folder(svc, collection_id) is None:
         raise HTTPException(404, "Collection not found.")
     return {"progress": svc.worker.progress(collection_id)}

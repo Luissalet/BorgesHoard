@@ -12,6 +12,7 @@ from . import __version__
 from .config import Config
 from .db import Database
 from .embedder import make_embedder
+from .faustus_source import FaustusIndexer, FaustusScheduler
 from .indexer import Indexer
 from .queries import Queries
 from .search import Search
@@ -44,10 +45,12 @@ class Services:
         self.documents = DocumentStore(self.db)
         self.queries = Queries(self.db)
         self.embedder = make_embedder(config.embed_backend, config.model_name, config.model_cache, config.embed_providers)
-        self.search = Search(self.db, self.documents, self.queries, self.embedder)
+        self.search = Search(self.db, self.documents, self.queries, self.embedder, collections=self.collections)
         self.indexer = Indexer(self.collections, self.documents, self.embedder, on_change=self.search.invalidate)
-        self.worker = IndexWorker(self.indexer, self.collections)
+        self.faustus_indexer = FaustusIndexer(self.collections, self.documents, self.indexer, on_change=self.search.invalidate)
+        self.worker = IndexWorker({"folder": self.indexer, "faustus": self.faustus_indexer}, self.collections)
         self.watcher = Watcher(self.worker.enqueue)
+        self.faustus_scheduler = FaustusScheduler(self.collections, self.worker)
         self._preload: threading.Thread | None = None
 
     # ---------- lifecycle ----------
@@ -62,12 +65,15 @@ class Services:
             self.worker.enqueue_all()
         if self.config.watch:
             self.watcher.sync(self.collections.list())
+        if self.config.autostart:
+            self.faustus_scheduler.start()
 
     def _warm_up(self) -> None:
         if self.embedder.ensure_loaded():
             self.search.invalidate()
 
     def stop(self) -> None:
+        self.faustus_scheduler.stop()
         self.watcher.stop()
         self.worker.stop()
         self.db.close()
@@ -105,6 +111,34 @@ class Services:
         if collection is None:
             raise LookupError("Collection not found.")
         return self.worker.enqueue(collection_id)
+
+    # ---------- sources (Faustus, and any future non-folder source) ----------
+    def add_faustus_source(self, name: str, config: dict, enabled: bool = True):
+        from .faustus_source import faustus_unique_key
+
+        collection, created = self.collections.add_source("faustus", name, faustus_unique_key(config.get("base_url", "")), config, enabled)
+        if created:
+            self.worker.enqueue(collection.id)
+        return collection
+
+    def update_faustus_source(self, collection_id: int, name: str | None, config_patch: dict, enabled: bool | None):
+        collection = self.collections.get(collection_id)
+        if collection is None or collection.kind != "faustus":
+            return None
+        if config_patch:
+            collection = self.collections.update_config(collection_id, config_patch)
+        patch = {}
+        if name is not None:
+            patch["name"] = name
+        if enabled is not None:
+            patch["enabled"] = enabled
+        if patch:
+            collection = self.collections.update(collection_id, patch)
+        return collection
+
+    def sync_source(self, collection_id: int) -> bool:
+        """Manual 'sync now' for a source; identical machinery to a folder reindex."""
+        return self.reindex(collection_id)
 
     # ---------- status ----------
     def status(self) -> dict:

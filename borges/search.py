@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -118,12 +119,33 @@ def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _meta(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def _in_date_range(date: str | None, since: str | None, until: str | None) -> bool:
+    """A hit with no date (every non-chat document today) always passes; a dated hit must fall in range."""
+    if not date:
+        return True
+    if since and date < since:
+        return False
+    if until and date > until:
+        return False
+    return True
+
+
 class Search:
-    def __init__(self, db: Database, docs: DocumentStore, queries: Queries, embedder: Embedder, reranker: Reranker | None = None):
+    def __init__(self, db: Database, docs: DocumentStore, queries: Queries, embedder: Embedder, collections=None, reranker: Reranker | None = None):
         self.db = db
         self.docs = docs
         self.queries = queries
         self.embedder = embedder
+        self.collections = collections  # CollectionStore; used to resolve `source` (a collection kind) to ids
         self.reranker = reranker
         self._lock = threading.Lock()
         self._ids = np.zeros(0, dtype=np.int64)
@@ -142,24 +164,27 @@ class Search:
             return self._ids, self._matrix
 
     # ---------- retrievers ----------
-    def bm25(self, q: str, limit: int, collection_id: int | None) -> list[tuple[int, float]]:
+    # `collection_ids` restricts to a set of collections (a single filter, a source-kind filter, or both
+    # intersected — see `_resolve_collection_ids`); None means the whole library.
+    def bm25(self, q: str, limit: int, collection_ids: set[int] | None) -> list[tuple[int, float]]:
         and_q, or_q = fts_query(q)
         if not and_q:
             return []
         for match in (and_q, or_q):
-            rows = self._fts(match, limit, collection_id)
+            rows = self._fts(match, limit, collection_ids)
             if rows:
                 return rows
         return []
 
-    def _fts(self, match: str, limit: int, collection_id: int | None) -> list[tuple[int, float]]:
+    def _fts(self, match: str, limit: int, collection_ids: set[int] | None) -> list[tuple[int, float]]:
         sql = """SELECT c.id, bm25(chunks_fts, 1.0, 0.5) AS score FROM chunks_fts
                  JOIN chunks c ON c.id = chunks_fts.rowid JOIN documents d ON d.id = c.document_id
                  WHERE chunks_fts MATCH ?"""
         params: list = [match]
-        if collection_id is not None:
-            sql += " AND d.collection_id = ?"
-            params.append(collection_id)
+        if collection_ids is not None:
+            marks = ",".join("?" for _ in collection_ids) or "NULL"
+            sql += f" AND d.collection_id IN ({marks})"
+            params += list(collection_ids)
         sql += " ORDER BY score LIMIT ?"
         params.append(limit)
         with self.db.lock:
@@ -169,7 +194,7 @@ class Search:
                 return []
         return [(r["id"], -float(r["score"])) for r in rows]
 
-    def dense(self, q: str, limit: int, collection_id: int | None, vector: np.ndarray | None = None, exclude: int | None = None) -> list[tuple[int, float]]:
+    def dense(self, q: str, limit: int, collection_ids: set[int] | None, vector: np.ndarray | None = None, exclude: int | None = None) -> list[tuple[int, float]]:
         if not self.embedder.ready():
             return []
         ids, matrix = self._dense_index()
@@ -177,8 +202,8 @@ class Search:
             return []
         query = vector if vector is not None else self.embedder.embed_query(q)
         scores = matrix @ query.astype(np.float32)
-        if collection_id is not None:
-            allowed = self.queries.collection_chunk_ids(collection_id)
+        if collection_ids is not None:
+            allowed = self.queries.chunk_ids_for_collections(collection_ids)
             mask = np.fromiter((int(i) in allowed for i in ids), dtype=bool, count=len(ids))
             scores = np.where(mask, scores, -np.inf)
         if exclude is not None:
@@ -187,6 +212,14 @@ class Search:
         top = np.argpartition(-scores, k - 1)[:k]
         top = top[np.argsort(-scores[top])]
         return [(int(ids[i]), float(scores[i])) for i in top if np.isfinite(scores[i]) and scores[i] >= DENSE_MIN_SCORE]
+
+    def _resolve_collection_ids(self, collection_id: int | None, source: str | None) -> set[int] | None:
+        """Combine a single-collection filter with a source-kind filter (`source='faustus'`)."""
+        ids: set[int] | None = {collection_id} if collection_id is not None else None
+        if source:
+            by_kind = {c.id for c in self.collections.list() if c.kind == source} if self.collections else set()
+            ids = by_kind if ids is None else (ids & by_kind)
+        return ids
 
     # ---------- fusion ----------
     @staticmethod
@@ -197,7 +230,8 @@ class Search:
                 fused[chunk_id] = fused.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
         return sorted(fused.items(), key=lambda item: -item[1])
 
-    def search(self, q: str, mode: str = "hybrid", limit: int = 10, collection_id: int | None = None) -> dict:
+    def search(self, q: str, mode: str = "hybrid", limit: int = 10, collection_id: int | None = None,
+               source: str | None = None, since: str | None = None, until: str | None = None) -> dict:
         q = q.strip()
         if len(q) < MIN_QUERY_CHARS:
             raise ValueError(f"The query needs at least {MIN_QUERY_CHARS} characters.")
@@ -205,14 +239,18 @@ class Search:
         dense_ok = self.embedder.ready()
         if mode == "dense" and not dense_ok:
             mode = "bm25"
+        collection_ids = self._resolve_collection_ids(collection_id, source)
         rankings: list[list[tuple[int, float]]] = []
         if mode in ("hybrid", "bm25"):
-            rankings.append(self.bm25(q, CANDIDATES, collection_id))
+            rankings.append(self.bm25(q, CANDIDATES, collection_ids))
         if mode in ("hybrid", "dense") and dense_ok:
-            rankings.append(self.dense(q, CANDIDATES, collection_id))
+            rankings.append(self.dense(q, CANDIDATES, collection_ids))
         fused = self.rrf(rankings) if mode == "hybrid" else [(cid, s) for cid, s in (rankings[0] if rankings else [])]
-        hits = self._hydrate(fused[: limit * 2], q)
-        hits = self._dedupe(hits)[:limit]
+        hits = self._hydrate(fused[: limit * 4 if (since or until) else limit * 2], q)
+        hits = self._dedupe(hits)
+        if since or until:
+            hits = [h for h in hits if _in_date_range(h.get("date"), since, until)]
+        hits = hits[:limit]
         if self.reranker is not None:
             hits = self.reranker(q, hits)
         return {"query": q, "mode": mode, "hits": hits, "dense_available": dense_ok, "took_ms": round((time.perf_counter() - started) * 1000, 1)}
@@ -241,11 +279,13 @@ class Search:
             row = rows.get(chunk_id)
             if not row:
                 continue
-            doc = {"title": row["title"], "kind": row["kind"], "filename": Path(row["rel_path"]).name}
+            meta = _meta(row["doc_meta"]) if row["kind"] == "chat" else {}
+            doc = {"title": row["title"], "kind": row["kind"], "filename": Path(row["rel_path"]).name, "meta": meta}
             hits.append({
                 "chunk_id": chunk_id, "document_id": row["document_id"], "unit_id": row["unit_id"], "collection_id": row["collection_id"],
-                "collection": row["collection"], "title": row["title"], "kind": row["kind"], "rel_path": row["rel_path"],
+                "collection": row["collection"], "source_kind": row["source_kind"], "title": row["title"], "kind": row["kind"], "rel_path": row["rel_path"],
                 "path": str(Path(row["collection_path"]) / row["rel_path"]), "page": row["page"], "section": row["section"], "line": row["line"],
+                "date": meta.get("date"), "project": meta.get("project") or None,
                 "score": round(float(score), 6), "citation": citation(doc, row["page"], row["section"], row["line"]),
                 "snippet": highlight(row["text"], terms),
             })

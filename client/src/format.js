@@ -1,4 +1,4 @@
-export const KIND_LABEL = { pdf: "PDF", docx: "Word", md: "Markdown", txt: "Texto", epub: "EPUB", html: "HTML", csv: "CSV", code: "Código" };
+export const KIND_LABEL = { pdf: "PDF", docx: "Word", md: "Markdown", txt: "Texto", epub: "EPUB", html: "HTML", csv: "CSV", code: "Código", chat: "Chat" };
 
 export const PHASE_LABEL = {
   queued: "En cola",

@@ -95,6 +95,14 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE documents ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0;
     """,
+    # 3: sources beyond folders (kind + config on collections; free-form metadata on documents, used by
+    # the Faustus source for conversation_id/project/created_at/updated_at/model/date/raw title).
+    """
+    ALTER TABLE collections ADD COLUMN kind TEXT NOT NULL DEFAULT 'folder';
+    ALTER TABLE collections ADD COLUMN config TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE collections ADD COLUMN sync_status TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE documents ADD COLUMN meta TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 

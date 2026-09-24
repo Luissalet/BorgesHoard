@@ -28,16 +28,44 @@ class Collection:
     code: bool
     created_at: float
     last_indexed_at: float | None
+    kind: str = "folder"  # folder | faustus
+    config: dict = None  # source-specific settings (e.g. Faustus base_url/credentials)
+    sync_status: dict = None  # last_run/counts/last_error, written by the source's indexer
+
+    def __post_init__(self):
+        if self.config is None:
+            self.config = {}
+        if self.sync_status is None:
+            self.sync_status = {}
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "path": self.path, "include": self.include, "exclude": self.exclude,
+        data = {"id": self.id, "name": self.name, "path": self.path, "include": self.include, "exclude": self.exclude,
                 "enabled": self.enabled, "watch": self.watch, "code": self.code, "created_at": self.created_at,
-                "last_indexed_at": self.last_indexed_at}
+                "last_indexed_at": self.last_indexed_at, "kind": self.kind}
+        if self.kind != "folder":
+            data["config"] = redact_config(self.config)
+            data["sync_status"] = self.sync_status
+        return data
 
 
 def _collection(row) -> Collection:
-    return Collection(row["id"], row["name"], row["path"], json.loads(row["include"] or "[]"), json.loads(row["exclude"] or "[]"),
-                      bool(row["enabled"]), bool(row["watch"]), bool(row["code"]), row["created_at"], row["last_indexed_at"])
+    keys = row.keys()
+    return Collection(
+        row["id"], row["name"], row["path"], json.loads(row["include"] or "[]"), json.loads(row["exclude"] or "[]"),
+        bool(row["enabled"]), bool(row["watch"]), bool(row["code"]), row["created_at"], row["last_indexed_at"],
+        kind=row["kind"] if "kind" in keys else "folder",
+        config=json.loads(row["config"] or "{}") if "config" in keys else {},
+        sync_status=json.loads(row["sync_status"] or "{}") if "sync_status" in keys else {},
+    )
+
+
+def redact_config(config: dict) -> dict:
+    """A copy of a source config with secrets masked, safe to send to the client."""
+    out = dict(config)
+    for key in ("password", "token"):
+        if out.get(key):
+            out[key] = "•" * 8
+    return out
 
 
 class CollectionStore:
@@ -59,7 +87,7 @@ class CollectionStore:
         return _collection(row) if row else None
 
     def add(self, name: str, path: str, include: list[str], exclude: list[str] | None, watch: bool, code: bool) -> tuple[Collection, bool]:
-        """Create a collection; returns (collection, created). Adding an existing folder returns it unchanged."""
+        """Create a folder collection; returns (collection, created). Adding an existing folder returns it unchanged."""
         resolved = str(Path(path).expanduser().resolve())
         if not Path(resolved).is_dir():
             raise ValueError(f"The folder does not exist: {path}")
@@ -67,13 +95,42 @@ class CollectionStore:
         if existing:
             return existing, False  # idempotent by folder path
         exclude = DEFAULT_EXCLUDE if exclude is None else exclude
+        return self._insert(name.strip() or Path(resolved).name, resolved, include, exclude, watch, code, "folder", {}, True), True
+
+    def add_source(self, kind: str, name: str, unique_key: str, config: dict, enabled: bool = True) -> tuple[Collection, bool]:
+        """Create a non-folder source (e.g. Faustus); returns (collection, created). Idempotent by `unique_key`."""
+        existing = self.by_path(unique_key)
+        if existing:
+            return existing, False
+        collection = self._insert(name.strip() or unique_key, unique_key, [], [], False, False, kind, config, enabled)
+        return collection, True
+
+    def _insert(self, name: str, path: str, include: list[str], exclude: list[str], watch: bool, code: bool,
+                kind: str, config: dict, enabled: bool) -> Collection:
         with self.db.transaction() as conn:
             cursor = conn.execute(
-                "INSERT INTO collections(name, path, include, exclude, enabled, watch, code, created_at) VALUES (?,?,?,?,1,?,?,?)",
-                (name.strip() or Path(resolved).name, resolved, json.dumps(include), json.dumps(exclude), int(watch), int(code), time.time()),
+                "INSERT INTO collections(name, path, include, exclude, enabled, watch, code, created_at, kind, config) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (name, path, json.dumps(include), json.dumps(exclude), int(enabled), int(watch), int(code), time.time(), kind, json.dumps(config)),
             )
             new_id = cursor.lastrowid
-        return self.get(new_id), True
+        return self.get(new_id)
+
+    def update_config(self, collection_id: int, patch: dict) -> Collection | None:
+        """Merge `patch` into a source's stored config (e.g. Faustus base_url/credentials/poll_minutes)."""
+        collection = self.get(collection_id)
+        if collection is None:
+            return None
+        merged = {**collection.config, **{k: v for k, v in patch.items() if v is not None}}
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE collections SET config = ? WHERE id = ?", (json.dumps(merged), collection_id))
+        return self.get(collection_id)
+
+    def set_sync_status(self, collection_id: int, status: dict) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE collections SET sync_status = ? WHERE id = ?", (json.dumps(status), collection_id))
+
+    def list_by_kind(self, kind: str) -> list[Collection]:
+        return [c for c in self.list() if c.kind == kind]
 
     def update(self, collection_id: int, patch: dict) -> Collection | None:
         allowed = {"name", "include", "exclude", "enabled", "watch", "code"}
@@ -139,8 +196,14 @@ class DocumentStore:
             return conn.execute("SELECT id FROM documents WHERE collection_id = ? AND rel_path = ?", (collection_id, rel_path)).fetchone()["id"]
 
     # ---------- replace a document's content ----------
-    def replace(self, collection_id: int, rel_path: str, extracted: Extracted, chunks: list[Chunk], size: int, mtime: float, file_hash: str) -> tuple[int, list[int]]:
-        """Insert or fully replace a document with its units and chunks. Returns (document_id, chunk_ids)."""
+    def replace(self, collection_id: int, rel_path: str, extracted: Extracted, chunks: list[Chunk], size: int, mtime: float, file_hash: str,
+                meta: dict | None = None) -> tuple[int, list[int]]:
+        """Insert or fully replace a document with its units and chunks. Returns (document_id, chunk_ids).
+
+        `meta` is free-form JSON kept alongside the row (unused by folder documents; the Faustus source
+        stores conversation_id/project/created_at/updated_at/model/date/title there).
+        """
+        meta_json = json.dumps(meta or {})
         with self.db.transaction() as conn:
             row = conn.execute("SELECT id FROM documents WHERE collection_id = ? AND rel_path = ?", (collection_id, rel_path)).fetchone()
             if row:
@@ -149,16 +212,16 @@ class DocumentStore:
                 conn.execute("DELETE FROM units WHERE document_id = ?", (document_id,))
                 conn.execute(
                     """UPDATE documents SET title=?, kind=?, size=?, mtime=?, hash=?, pages=?, units=?, chunks=?, chars=?, needs_ocr=?,
-                       status='ok', error=NULL, indexed_at=?, index_version=? WHERE id=?""",
+                       status='ok', error=NULL, indexed_at=?, index_version=?, meta=? WHERE id=?""",
                     (extracted.title, extracted.kind, size, mtime, file_hash, extracted.pages, len(extracted.units), len(chunks),
-                     extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION, document_id),
+                     extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION, meta_json, document_id),
                 )
             else:
                 cursor = conn.execute(
-                    """INSERT INTO documents(collection_id, rel_path, title, kind, size, mtime, hash, pages, units, chunks, chars, needs_ocr, status, indexed_at, index_version)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok',?,?)""",
+                    """INSERT INTO documents(collection_id, rel_path, title, kind, size, mtime, hash, pages, units, chunks, chars, needs_ocr, status, indexed_at, index_version, meta)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok',?,?,?)""",
                     (collection_id, rel_path, extracted.title, extracted.kind, size, mtime, file_hash, extracted.pages, len(extracted.units),
-                     len(chunks), extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION),
+                     len(chunks), extracted.chars, int(extracted.needs_ocr), time.time(), INDEX_VERSION, meta_json),
                 )
                 document_id = cursor.lastrowid
             unit_ids: list[int] = []

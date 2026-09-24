@@ -2,8 +2,8 @@
   "schema": 1,
   "id": "borges",
   "name": "Borges's Hoard",
-  "purpose": "The user's personal library: folders of their own documents indexed locally so the assistant can answer 'where did I read or write about X' with exact page and section citations.",
-  "capabilities": ["library", "documents", "hybrid-search", "citations", "passages", "pdf", "docx", "markdown", "epub", "html", "collections", "folder-watch", "reindex", "similar-passages", "local-embeddings"],
+  "purpose": "The user's personal library: folders of their own documents, and their own Faustus conversations, indexed locally so the assistant can answer 'where did I read/write/decide X' with exact page, section and chat-turn citations.",
+  "capabilities": ["library", "documents", "hybrid-search", "citations", "passages", "pdf", "docx", "markdown", "epub", "html", "collections", "folder-watch", "reindex", "similar-passages", "local-embeddings", "faustus-conversations", "sources", "date-range-search"],
   "placeholders": ["BORGES_DIR", "APP_URL", "TOKEN_FILE", "PYTHON"],
   "defaults": {
     "APP_URL": "http://127.0.0.1:5184",
