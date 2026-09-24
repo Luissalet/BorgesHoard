@@ -163,6 +163,8 @@ def test_index_links_and_cite_them(services, monkeypatch):
     # source filter excludes links
     assert services.search.search("tarta de manzana", "bm25", 5, source="folder")["hits"] == []
 
+    from borges.agent_tools import _hit
+    assert _hit(hit)["url"] == "https://ejemplo.org/l1"  # the agent tool keeps the url on link hits
     status = services.collections.get(collection.id).sync_status
     assert status["ok"] is True and status["links_total"] == 2 and status["links_changed"] == 2 and status["via"] == "test"
 

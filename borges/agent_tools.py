@@ -87,7 +87,7 @@ class Tool:
 
 def _hit(h: dict) -> dict:
     keys = ("chunk_id", "document_id", "collection_id", "collection", "source_kind", "title", "kind", "rel_path",
-            "page", "section", "line", "date", "project", "score", "citation", "snippet")
+            "page", "section", "line", "date", "project", "url", "score", "citation", "snippet")
     return {k: h[k] for k in keys if k in h}
 
 
