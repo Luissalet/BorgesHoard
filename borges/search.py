@@ -214,7 +214,7 @@ class Search:
         return [(int(ids[i]), float(scores[i])) for i in top if np.isfinite(scores[i]) and scores[i] >= DENSE_MIN_SCORE]
 
     def _resolve_collection_ids(self, collection_id: int | None, source: str | None) -> set[int] | None:
-        """Combine a single-collection filter with a source-kind filter (`source='faustus'`)."""
+        """Combine a single-collection filter with a source-kind filter (`source='faustus'` / `'links'`)."""
         ids: set[int] | None = {collection_id} if collection_id is not None else None
         if source:
             by_kind = {c.id for c in self.collections.list() if c.kind == source} if self.collections else set()
@@ -279,13 +279,13 @@ class Search:
             row = rows.get(chunk_id)
             if not row:
                 continue
-            meta = _meta(row["doc_meta"]) if row["kind"] == "chat" else {}
+            meta = _meta(row["doc_meta"]) if row["kind"] in ("chat", "link") else {}
             doc = {"title": row["title"], "kind": row["kind"], "filename": Path(row["rel_path"]).name, "meta": meta}
             hits.append({
                 "chunk_id": chunk_id, "document_id": row["document_id"], "unit_id": row["unit_id"], "collection_id": row["collection_id"],
                 "collection": row["collection"], "source_kind": row["source_kind"], "title": row["title"], "kind": row["kind"], "rel_path": row["rel_path"],
                 "path": str(Path(row["collection_path"]) / row["rel_path"]), "page": row["page"], "section": row["section"], "line": row["line"],
-                "date": meta.get("date"), "project": meta.get("project") or None,
+                "date": meta.get("date"), "project": meta.get("project") or None, "url": meta.get("url") or None,
                 "score": round(float(score), 6), "citation": citation(doc, row["page"], row["section"], row["line"]),
                 "snippet": highlight(row["text"], terms),
             })

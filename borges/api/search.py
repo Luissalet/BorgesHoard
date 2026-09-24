@@ -16,7 +16,7 @@ def search(
     collection: int | None = Query(None, ge=1),
     mode: str = Query("hybrid", pattern="^(hybrid|bm25|dense)$"),
     limit: int = Query(10, ge=1, le=50),
-    source: str | None = Query(None, pattern="^(folder|faustus)$", description="Restrict to one source kind, e.g. kind:faustus."),
+    source: str | None = Query(None, pattern="^(folder|faustus|links)$", description="Restrict to one source kind: folder, faustus or links."),
     since: str | None = Query(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date; only chats/documents dated on or after this."),
     until: str | None = Query(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date; only chats/documents dated on or before this."),
 ):

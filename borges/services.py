@@ -14,6 +14,7 @@ from .db import Database
 from .embedder import make_embedder
 from .faustus_source import FaustusIndexer, FaustusScheduler
 from .indexer import Indexer
+from .links_source import LinksIndexer
 from .queries import Queries
 from .search import Search
 from .store import CollectionStore, DocumentStore
@@ -48,7 +49,8 @@ class Services:
         self.search = Search(self.db, self.documents, self.queries, self.embedder, collections=self.collections)
         self.indexer = Indexer(self.collections, self.documents, self.embedder, on_change=self.search.invalidate)
         self.faustus_indexer = FaustusIndexer(self.collections, self.documents, self.indexer, on_change=self.search.invalidate)
-        self.worker = IndexWorker({"folder": self.indexer, "faustus": self.faustus_indexer}, self.collections)
+        self.links_indexer = LinksIndexer(self.collections, self.documents, self.indexer, on_change=self.search.invalidate)
+        self.worker = IndexWorker({"folder": self.indexer, "faustus": self.faustus_indexer, "links": self.links_indexer}, self.collections)
         self.watcher = Watcher(self.worker.enqueue)
         self.faustus_scheduler = FaustusScheduler(self.collections, self.worker)
         self._preload: threading.Thread | None = None
@@ -121,9 +123,18 @@ class Services:
             self.worker.enqueue(collection.id)
         return collection
 
-    def update_faustus_source(self, collection_id: int, name: str | None, config_patch: dict, enabled: bool | None):
+    def add_links_source(self, name: str, config: dict, enabled: bool = True):
+        """A Links Hoard source: through the hub proxy unless `base_url` (+ `token`) points at it directly."""
+        from .links_source import links_unique_key
+
+        collection, created = self.collections.add_source("links", name or "Mis enlaces", links_unique_key(config.get("base_url", "")), config, enabled)
+        if created:
+            self.worker.enqueue(collection.id)
+        return collection
+
+    def update_source(self, collection_id: int, name: str | None, config_patch: dict, enabled: bool | None, kinds=("faustus", "links")):
         collection = self.collections.get(collection_id)
-        if collection is None or collection.kind != "faustus":
+        if collection is None or collection.kind not in kinds:
             return None
         if config_patch:
             collection = self.collections.update_config(collection_id, config_patch)
@@ -135,6 +146,9 @@ class Services:
         if patch:
             collection = self.collections.update(collection_id, patch)
         return collection
+
+    def update_faustus_source(self, collection_id: int, name: str | None, config_patch: dict, enabled: bool | None):
+        return self.update_source(collection_id, name, config_patch, enabled, kinds=("faustus",))
 
     def sync_source(self, collection_id: int) -> bool:
         """Manual 'sync now' for a source; identical machinery to a folder reindex."""

@@ -298,12 +298,16 @@ class FaustusIndexer:
 
 
 class FaustusScheduler:
-    """Polls every `poll_minutes` (per source) and enqueues a sync on the shared IndexWorker."""
+    """Polls every `poll_minutes` (per source) and enqueues a sync on the shared IndexWorker.
 
-    def __init__(self, collections: CollectionStore, worker, check_seconds: float = 60.0):
+    Despite its name it serves every polled source kind (`kinds`): Faustus chats and, since 0.5, links.
+    """
+
+    def __init__(self, collections: CollectionStore, worker, check_seconds: float = 60.0, kinds: tuple[str, ...] = ("faustus", "links")):
         self.collections = collections
         self.worker = worker
         self.check_seconds = check_seconds
+        self.kinds = kinds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -325,10 +329,11 @@ class FaustusScheduler:
 
     def _tick(self) -> None:
         now = time.time()
-        for collection in self.collections.list_by_kind("faustus"):
-            if not collection.enabled:
+        for collection in self.collections.list():
+            if collection.kind not in self.kinds or not collection.enabled:
                 continue
-            poll_minutes = float(collection.config.get("poll_minutes") or DEFAULT_POLL_MINUTES)
+            default_poll = DEFAULT_POLL_MINUTES if collection.kind == "faustus" else 30
+            poll_minutes = float(collection.config.get("poll_minutes") or default_poll)
             last_run = float((collection.sync_status or {}).get("last_run") or 0)
             if now - last_run >= max(poll_minutes, 1) * 60:
                 self.worker.enqueue(collection.id)

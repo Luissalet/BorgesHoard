@@ -95,9 +95,10 @@ export default function Buscar() {
             ))}
           </select>
           <select className="field" style={{ width: "auto" }} value={source} onChange={(e) => change(setSource)(e.target.value)} aria-label="Fuente">
-            <option value="">Documentos y chats</option>
+            <option value="">Todo (documentos, chats, enlaces)</option>
             <option value="folder">Solo documentos</option>
             <option value="faustus">Solo chats (Faustus)</option>
+            <option value="links">Solo enlaces (Links Hoard)</option>
           </select>
         </div>
       </form>
@@ -140,10 +141,13 @@ export default function Buscar() {
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="cite truncate text-[14px]">{h.citation}</div>
                       {h.kind === "chat" && <span className="chip chip-accent">{h.date || "chat"}</span>}
+                      {h.kind === "link" && <span className="chip chip-accent">enlace · {h.date || ""}</span>}
                     </div>
                     <div className="help truncate" title={`${h.collection} › ${h.rel_path}${h.section ? ` › ${h.section}` : ""}`}>
                       {h.kind === "chat"
                         ? `${h.collection}${h.project ? ` › ${h.project}` : ""}`
+                        : h.kind === "link"
+                        ? `${h.collection} › ${h.url || h.rel_path}`
                         : `${h.collection} › ${h.rel_path}${h.section && h.kind !== "md" && h.kind !== "html" && h.kind !== "docx" ? ` › ${h.section}` : ""}${h.line ? ` · l. ${h.line}` : ""}`}
                     </div>
                   </div>

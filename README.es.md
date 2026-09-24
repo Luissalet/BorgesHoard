@@ -12,7 +12,8 @@ Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo m
 - **Indexación incremental**: tamaño+fecha y después SHA-256; solo se vuelve a leer lo que cambia; lo borrado se purga. Corre en segundo plano con cola y progreso (archivos hechos/total, archivo actual, errores por archivo).
 - **Búsqueda híbrida**: BM25 de SQLite FTS5 (sin distinguir tildes, sin palabras vacías; los términos de 3 o más letras se expanden como prefijo, los más cortos solo palabra entera) ∪ coseno sobre vectores float32 guardados en SQLite → fusión RRF. Modos «Híbrida», «Palabras» y «Significado». Se necesitan al menos 3 caracteres; un resultado por página o sección, con «ver más» para los demás; cada respuesta indica los milisegundos empleados.
 - **Embeddings**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (ONNX cuantizado, 384 dimensiones, ~240 MB, ~50 idiomas, funciona entre idiomas) mediante `fastembed`, descargado la primera vez en `data/models`. Hasta que está listo la búsqueda es solo por palabras y la interfaz lo dice.
-- **Interfaz**: Buscar (con filtro de fuente: documentos / chats de Faustus / ambos, y una etiqueta de fecha en los resultados de chat), Biblioteca, Colecciones, Fuentes (conectar un Faustus: URL, token o usuario/contraseña, proyectos, intervalo de sincronización, sincronizar ahora, estado) y Estado. Funciona en el móvil (a través de un túnel) con el pasaje a pantalla completa.
+- **Interfaz**: Buscar (con filtro de fuente: documentos / chats de Faustus / enlaces / todos, y una etiqueta de fecha en los resultados de chat), Biblioteca, Colecciones, Fuentes (conectar un Faustus: URL, token o usuario/contraseña, proyectos, intervalo de sincronización, sincronizar ahora, estado) y Estado. Funciona en el móvil (a través de un túnel) con el pasaje a pantalla completa.
+- **Fuente de enlaces**: los enlaces guardados en Links Hoard, a través del Hoard Hub (sin URL ni token), cada uno un documento citable `[enlace «Título» · sitio]`. Ver «La fuente de enlaces» más abajo.
 - **Fuente Faustus**: señala tu propio Faustus (`http://127.0.0.1:7000` por defecto) y Borges indexa tus conversaciones pasadas, así el asistente puede citar lo que decidisteis en un chat anterior. Ver «La fuente Faustus» más abajo.
 
 ## Requisitos
@@ -72,6 +73,23 @@ Endpoints de Faustus en los que se apoya (conviene verificarlos contra la instan
 - Los tokens usan `Authorization: Bearer <token>` (creado con `POST /api/tokens`, alcance `sessions`, prefijo `ody_`).
 
 Cada conversación se convierte en un documento (`kind: "chat"`), titulado `Chat: <título> (<aaaa-mm-dd>)`, con una sección por cada turno de usuario/asistente conservado («turno N»); el resultado de una herramienta solo se conserva si es corto (≤300 caracteres), si no solo se anota su nombre. El mismo troceado/embeddings/FTS de siempre indexa esto igual que un documento de carpeta, así que las citas, `library_similar` y el panel de pasaje funcionan sin cambios. La cita se lee `[chat «Título» · aaaa-mm-dd · turno N]`. Un sondeo en segundo plano resincroniza cada fuente cada `poll_minutes` (10 por defecto); **Fuentes** también tiene un botón «Sincronizar ahora».
+
+## La fuente de enlaces (Links Hoard)
+
+Los enlaces guardados en Links Hoard se indexan igual. Se añade una fuente de tipo `links` desde **Fuentes**
+(o `POST /api/sources/links`): qué enlaces (`state`: `all`, `unread`, `read`, `archived`), una `tag` opcional
+y el intervalo de sincronización (30 minutos por defecto). Sin URL y sin token: la sincronización pasa por el
+proxy del Hoard Hub (`POST <hub>/api/apps/links/call` con el token propio de Borges), así Borges nunca lee el
+archivo de token de otra aplicación. Sin hub, `base_url` + `token` llegan directamente al `/api/agent/call`
+de Links Hoard.
+
+Cada enlace es un documento (`kind: "link"`) con una ficha (título, sitio, autor, URL, etiquetas, tu nota, el
+extracto) y el texto de la página tal como lo extrajo Links Hoard (`read_link`, paginado). Un enlace cuya
+página nunca se descargó se indexa igualmente por su título, extracto y nota. Su cita es
+`[enlace «Título» · sitio]` y cada resultado lleva la `url`. Un enlace solo se vuelve a leer cuando cambia su
+huella (título, número de palabras, estado de descarga, nota, etiquetas, URL, extracto); uno borrado en Links
+Hoard sale del índice en la siguiente sincronización. Cada sincronización con cambios emite
+`borges.source.synced` en el bus de la familia.
 
 ## Conectar el asistente (MCP)
 

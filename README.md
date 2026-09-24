@@ -15,6 +15,7 @@ Part of the Hoard family (see `faustus-plugin.json`).
 - **Hybrid search**: SQLite FTS5 BM25 (diacritics-insensitive, stopwords dropped, terms of 3+ letters match as a prefix of their light Spanish stem, shorter terms whole-word only) ∪ dense cosine over float32 vectors in SQLite → Reciprocal Rank Fusion. Modes `hybrid | bm25 | dense`. Queries under 3 characters are refused (400). One hit per page/section; further hits from the same section come back in `also` (UI: "ver más"). Responses carry `took_ms`. A reranker hook is left in `Search(reranker=...)`.
 - **Embeddings**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (ONNX, quantized, 384 dims, ~240 MB on disk, ~50 languages, cross-lingual) through `fastembed`, downloaded on first use into `data/models`. Until it is ready search is keyword-only and the UI says so. Set `BORGES_EMBED=none` to disable dense search entirely.
 - **UI (Spanish)**: Buscar (big search box, mode toggle, collection filter, source filter — documents / Faustus chats / both —, results with citation + highlighted snippet + a date chip on chat hits, passage side panel with prev/next page and "similar passages"), Biblioteca (documents by collection, type, size, pages, indexed date, OCR badge; document view with outline and page text), Colecciones (add folder, globs, switches, reindex, progress, errors), Fuentes (connect a Faustus workspace: URL, token or user/password, project filter, poll interval, sync now, status), Estado (model, counts, queue, disk).
+- **Links source**: the links saved in Links Hoard, through the Hoard Hub (no URL, no token), each one a citable document `[enlace «Title» · site]`. See "The links source" below.
 - **Faustus source**: point Borges at your own Faustus workspace (`http://127.0.0.1:7000` by default) and it indexes your past conversations so the assistant can cite what was decided in an earlier chat. See "The Faustus source" below.
 
 ## Requirements
@@ -101,6 +102,22 @@ Its citation reads `[chat «Title» · yyyy-mm-dd · turno N]`. A background pol
 `poll_minutes` (default 10); **Fuentes** also has a "Sincronizar ahora" button, and unchanged conversations
 are skipped cheaply by comparing `last_message_at`.
 
+## The links source (Links Hoard)
+
+The saved links of Links Hoard can be indexed the same way. Add a source of kind `links` from **Fuentes**
+(or `POST /api/sources/links`): which links (`state`: `all`, `unread`, `read`, `archived`), an optional
+`tag`, and the poll interval (30 minutes by default). No URL and no token: the sync goes through the Hoard
+Hub's proxy (`POST <hub>/api/apps/links/call` with Borges's own token, i.e. `family.call("links", ...)`),
+so Borges never reads another app's token file. Without a hub, `base_url` + `token` reach Links Hoard's
+`/api/agent/call` directly.
+
+One link becomes one document (`kind: "link"`) with a header unit (title, site, byline, URL, tags, the
+user's note, the excerpt) and the page text as Links Hoard extracted it (`read_link`, paged). A link whose
+page never fetched is still indexed from its title, excerpt and note. Its citation reads
+`[enlace «Title» · site]` and every hit carries the `url`. A link is re-read only when its fingerprint
+(title, word count, fetch status, note, tags, URL, excerpt) changed; a link deleted in Links Hoard leaves
+the index at the next sync. Each sync with changes emits `borges.source.synced` on the family bus.
+
 ## API
 
 All JSON; errors are `{ "error": "..." }`.
@@ -109,8 +126,9 @@ All JSON; errors are `{ "error": "..." }`.
 - `GET /api/status` → model state, counts (documents, chunks, errors, needs_ocr), per-collection counts, worker queue and progress, disk
 - `GET/POST /api/collections`, `GET/PATCH/DELETE /api/collections/{id}`, `POST /api/collections/{id}/reindex`, `GET /api/collections/{id}/progress`
 - `GET /api/documents?collection&q&status&limit&cursor` (cursor = last id), `GET /api/documents/{id}` (metadata + outline), `GET /api/documents/{id}/text?page=|section=|unit=` (text with prev/next)
-- `GET /api/search?q&collection&mode=hybrid|bm25|dense&limit&source=folder|faustus&since=&until=` → `took_ms` and hits with `citation`, `snippet` (with `<mark>`), `chunk_id`, `document_id`, `page`, `section`, `line`, `date`, `project`, `source_kind`, `score`, `also`/`more` (collapsed hits from the same section); `q` must have 3+ characters; `since`/`until` are `YYYY-MM-DD` and only constrain dated (chat) hits
+- `GET /api/search?q&collection&mode=hybrid|bm25|dense&limit&source=folder|faustus|links&since=&until=` → `took_ms` and hits with `citation`, `snippet` (with `<mark>`), `chunk_id`, `document_id`, `page`, `section`, `line`, `date`, `project`, `source_kind`, `score`, `also`/`more` (collapsed hits from the same section); `q` must have 3+ characters; `since`/`until` are `YYYY-MM-DD` and only constrain dated (chat) hits
 - `GET /api/similar/{chunk_id}`, `GET /api/chunks/{chunk_id}`
+- `POST /api/sources/links` — a Links Hoard source (`name`, `state`, `tag`, `poll_minutes`, and only without a hub `base_url` + `token`); `GET /api/sources?kind=faustus|links`
 - `GET/POST /api/sources`, `GET/PATCH/DELETE /api/sources/{id}`, `POST /api/sources/{id}/sync`, `GET /api/sources/{id}/status`, `GET /api/sources/faustus/recent-chats?limit&project` — the Faustus source (see above); config secrets come back masked
 - `GET /api/agent/tools` (catalog + instructions), `POST /api/agent/call` (Bearer token from `data/mcp-token`)
 
@@ -120,7 +138,7 @@ All JSON; errors are `{ "error": "..." }`.
 
 | Tool | What it does |
 | --- | --- |
-| `library_search` | Hybrid search → hits with citation, snippet, chunk_id, document_id (q, collection?, mode?, limit, source? = `folder`\|`faustus`, since?, until?). |
+| `library_search` | Hybrid search → hits with citation, snippet, chunk_id, document_id (q, collection?, mode?, limit, source? = `folder`\|`faustus`\|`links`, since?, until?). |
 | `library_read` | Exact text of a page / section / the unit containing a chunk, with prev/next (document_id, page? \| section? \| chunk_id?, max_chars). |
 | `library_document` | Metadata and outline of one document. |
 | `library_documents` | List documents (collection?, q?, cursor). |
@@ -140,7 +158,7 @@ venv\Scripts\python -m pytest -q          # fake embedder, no network
 venv\Scripts\python -m pytest -m model    # downloads/loads the real model, checks a Spanish query
 ```
 
-Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
+Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), the links source against a fake Links Hoard (paging, fingerprints, unfetched pages, filters, REST), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
 
 ## Limits (v1)
 

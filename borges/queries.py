@@ -8,7 +8,7 @@ from pathlib import Path
 from .db import Database
 
 KIND_LABEL = {"pdf": "PDF", "docx": "Word", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código",
-              "chat": "Chat"}
+              "chat": "Chat", "link": "Enlace"}
 
 
 def _meta(value) -> dict:
@@ -32,8 +32,13 @@ def document_json(row) -> dict:
 
 
 def citation(doc: dict, page: int | None, section: str, line: int | None = None) -> str:
-    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N]."""
+    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N] · [enlace «Título» · sitio]."""
     kind = doc["kind"]
+    if kind == "link":
+        meta = _meta(doc.get("meta"))
+        title = meta.get("title") or doc["title"]
+        site = meta.get("site") or ""
+        return f"[enlace «{title}»" + (f" · {site}]" if site else "]")
     if kind == "chat":
         meta = _meta(doc.get("meta"))
         title = meta.get("title") or doc["title"]
