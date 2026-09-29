@@ -51,9 +51,14 @@ export default function Documento({ param, query }) {
       {doc.outline.length > 0 && (
         <div className="grid gap-4 md:grid-cols-[260px_minmax(0,1fr)]">
           <nav className="panel-white max-h-[70dvh] overflow-auto p-2" aria-label="Índice">
-            {doc.structure_source === "bookmarks" && doc.structure?.length > 0 && (
+            {doc.structure_source !== "none" && doc.structure?.length > 0 && (
               <div className="mb-3 border-b pb-3" style={{ borderColor: "var(--line)" }}>
-                <p className="px-3 pb-1 text-[12px] font-semibold">Marcadores del PDF</p>
+                <p className="px-3 pb-1 text-[12px] font-semibold">
+                  {doc.structure_source === "bookmarks" ? "Marcadores del PDF" : "Encabezados probables"}
+                </p>
+                {doc.structure_source === "typography_inferred" && (
+                  <p className="help px-3 pb-2 text-[12px]">Detectados por el tamaño del texto. Comprueba la página antes de citar.</p>
+                )}
                 {doc.structure.map((entry, index) => {
                   const target = bookmarkUnit(entry.page);
                   return (

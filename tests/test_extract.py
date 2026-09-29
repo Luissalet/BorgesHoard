@@ -12,6 +12,7 @@ def test_pdf_pages_keep_numbers(tmp_path):
     assert [u.number for u in result.units] == [1, 2, 3]
     assert "Funes" in result.units[0].text and "bifurcan" in result.units[1].text
     assert result.title == "Libro De Arena"
+    assert result.outline_source == "none" and result.outline == []
 
 
 def test_scanned_pdf_is_flagged(tmp_path):
@@ -37,6 +38,29 @@ def test_pdf_bookmarks_provide_declared_page_structure(tmp_path):
     ]
     assert [unit.title for unit in result.units] == [
         "Introducción", "Introducción › Método", "Conclusiones"]
+
+
+def test_pdf_without_bookmarks_infers_only_prominent_unique_headings(tmp_path):
+    import pymupdf as fitz
+
+    path = tmp_path / "manual_sin_indice.pdf"
+    with fitz.open() as pdf:
+        for heading, size in [("Introducción", 20), ("Método", 16), ("", 0)]:
+            page = pdf.new_page()
+            page.insert_text((50, 25), "Manual de ejemplo", fontsize=18)
+            if heading:
+                page.insert_text((50, 90), heading, fontsize=size)
+            page.insert_text((50, 160), "Este párrafo largo contiene el texto normal del manual y sus explicaciones.", fontsize=11)
+        pdf.save(str(path))
+
+    result = extract(path)
+    assert result.outline_source == "typography_inferred"
+    assert result.outline == [
+        {"level": 1, "title": "Introducción", "page": 1},
+        {"level": 2, "title": "Método", "page": 2},
+    ]
+    assert [unit.title for unit in result.units] == [
+        "Introducción", "Introducción › Método", "Introducción › Método"]
 
 
 def test_docx_headings_become_sections(tmp_path):
