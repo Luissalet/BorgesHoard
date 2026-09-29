@@ -115,11 +115,6 @@ class Queries:
                 row = c.execute("SELECT * FROM units WHERE id = ? AND document_id = ?", (unit_id, document_id)).fetchone()
             elif page is not None:
                 row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind = 'page' AND number = ?", (document_id, page)).fetchone()
-                if row is None:  # a short page merged into a neighbour: serve the unit that now holds it
-                    pages = c.execute("SELECT pages FROM documents WHERE id = ?", (document_id,)).fetchone()
-                    if pages and 1 <= page <= pages["pages"]:
-                        row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind = 'page' AND number > ? ORDER BY number LIMIT 1", (document_id, page)).fetchone() \
-                            or c.execute("SELECT * FROM units WHERE document_id = ? AND kind = 'page' AND number < ? ORDER BY number DESC LIMIT 1", (document_id, page)).fetchone()
             elif section is not None:
                 row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind != 'page' AND number = ?", (document_id, section)).fetchone()
             else:

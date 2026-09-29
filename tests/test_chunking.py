@@ -67,10 +67,13 @@ def test_small_sections_merge_into_the_following_one():
     assert not any(c.text.strip() == "- PENDIENTES 118." for c in chunks)
 
 
-def test_short_pages_merge_but_keep_page_numbers():
+def test_short_pages_keep_their_own_text_and_page_numbers():
     units = [Unit(kind="page", number=1, text="Título"), Unit(kind="page", number=2, text=sentence(2) * 5), Unit(kind="page", number=3, text=sentence(3) * 5)]
     merged = merge_small_units(units)
-    assert [u.number for u in merged] == [2, 3] and merged[0].text.startswith("Título")
+    assert [u.number for u in merged] == [1, 2, 3]
+    chunks = chunk_units(merged)
+    assert chunks[0].page == 1 and chunks[0].text == "Título"
+    assert all("Título" not in c.text for c in chunks[1:])
 
 
 def test_all_short_units_collapse_into_one():

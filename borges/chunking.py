@@ -12,7 +12,7 @@ OVERLAP_CHARS = 150
 MIN_TAIL = 200  # a trailing piece shorter than this is merged into the previous chunk
 MIN_UNIT_CHARS = 200  # a page/section shorter than this is merged into its neighbour
 MIN_CHUNK_CHARS = 120  # never emit a chunk shorter than this unless it is the whole document
-INDEX_VERSION = 2  # bump when chunking rules change: documents below it are re-chunked on the next reindex
+INDEX_VERSION = 3  # preserve physical PDF page boundaries, including short pages
 
 _BREAKS = re.compile(r"\n\n|\n|(?<=[.!?…;:])\s+|(?<=,)\s+|\s+")
 
@@ -61,7 +61,9 @@ def merge_small_units(units: list[Unit], minimum: int = MIN_UNIT_CHARS) -> list[
     The merged unit keeps the metadata (kind, number, title, line) of the larger part, so a two-line
     "## Pendiente" section stops being its own chunk and its text rides along with its neighbour.
     """
-    if len(units) <= 1:
+    # Physical page numbers are evidence coordinates. Merging a short PDF
+    # page into its neighbour silently assigns its text to the wrong citation.
+    if len(units) <= 1 or any(unit.kind == "page" for unit in units):
         return list(units)
     pending: list[Unit] = []  # short units waiting to be attached to the next big one
     out: list[Unit] = []
