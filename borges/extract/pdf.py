@@ -8,7 +8,7 @@ from pathlib import Path
 from .base import Extracted, Unit, finish
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
-PDF_STRUCTURE_VERSION = 2  # bookmarks, then conservative typography fallback
+PDF_STRUCTURE_VERSION = 3  # refuse typography inference on two-column layouts
 
 
 def _typographic_outline(doc) -> list[dict]:
@@ -19,7 +19,7 @@ def _typographic_outline(doc) -> list[dict]:
     No candidates is an honest result, not a reason to invent structure.
     """
     spans: list[tuple[float, int]] = []
-    lines: list[tuple[int, str, float, float]] = []
+    lines: list[tuple[int, str, float, float, float, float]] = []
     for page_number, page in enumerate(doc, start=1):
         for block in page.get_text("dict").get("blocks", []):
             for line in block.get("lines", []):
@@ -33,9 +33,11 @@ def _typographic_outline(doc) -> list[dict]:
                     chars = len(str(span.get("text") or "").strip())
                     if chars:
                         spans.append((float(span.get("size") or 0), chars))
-                y = float(line.get("bbox", (0, 0, 0, 0))[1])
+                bbox = line.get("bbox", (0, 0, 0, 0))
+                x, y = float(bbox[0]), float(bbox[1])
                 if y < page.rect.height * 0.75:
-                    lines.append((page_number, " ".join(label.split()), size, y))
+                    lines.append((page_number, " ".join(label.split()), size,
+                                  y, x, float(page.rect.width)))
     if not spans:
         return []
     total = sum(chars for _, chars in spans)
@@ -47,10 +49,26 @@ def _typographic_outline(doc) -> list[dict]:
             body_size = size
             break
     counts: dict[str, int] = {}
-    for _, label, _, _ in lines:
+    # A compact two-column page needs reading-order analysis that this small
+    # fallback does not have. Leave it unstructured instead of inventing an
+    # ordering from Y coordinates across both columns.
+    columns: dict[int, dict[str, list[float]]] = {}
+    for page, label, size, y, x, width in lines:
+        if size > body_size * 1.1 or len(label) < 20:
+            continue
+        side = "left" if x < width * 0.45 else "right" if x > width * 0.52 else ""
+        if side:
+            columns.setdefault(page, {"left": [], "right": []})[side].append(y)
+    for sides in columns.values():
+        left, right = sides["left"], sides["right"]
+        if (len(left) >= 3 and len(right) >= 3
+                and max(min(left), min(right)) <= min(max(left), max(right))):
+            return []
+
+    for _, label, _, _, _, _ in lines:
         key = label.casefold()
         counts[key] = counts.get(key, 0) + 1
-    candidates = [(page, label, size, y) for page, label, size, y in lines
+    candidates = [(page, label, size, y) for page, label, size, y, _, _ in lines
                   if size >= max(body_size * 1.25, body_size + 2)
                   and 4 <= len(label) <= 90 and len(label.split()) <= 12
                   and not label.endswith((".", ",", ";"))

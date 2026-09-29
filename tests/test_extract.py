@@ -63,6 +63,24 @@ def test_pdf_without_bookmarks_infers_only_prominent_unique_headings(tmp_path):
         "Introducción", "Introducción › Método", "Introducción › Método"]
 
 
+def test_two_column_pdf_does_not_invent_reading_order(tmp_path):
+    import pymupdf as fitz
+
+    path = tmp_path / "dos_columnas.pdf"
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((50, 70), "Primer apartado", fontsize=20)
+        page.insert_text((320, 70), "Segundo apartado", fontsize=20)
+        for y in (110, 135, 160, 185):
+            page.insert_text((50, y), "Texto normal de la columna izquierda.", fontsize=11)
+            page.insert_text((320, y), "Texto normal de la columna derecha.", fontsize=11)
+        pdf.save(str(path))
+
+    result = extract(path)
+    assert result.outline_source == "none"
+    assert result.outline == []
+
+
 def test_docx_headings_become_sections(tmp_path):
     result = extract(make_docx(tmp_path / "memoria.docx"))
     assert result.kind == "docx"
