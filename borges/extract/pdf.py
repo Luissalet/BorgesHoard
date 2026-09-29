@@ -8,7 +8,20 @@ from pathlib import Path
 from .base import Extracted, Unit, finish
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
-PDF_STRUCTURE_VERSION = 3  # refuse typography inference on two-column layouts
+PDF_STRUCTURE_VERSION = 4  # exclude contents pages from typography inference
+
+
+def _is_contents_page(page) -> bool:
+    """Detect an explicit contents heading near the top, not an arbitrary mention."""
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            if float(line.get("bbox", (0, page.rect.height))[1]) > page.rect.height * 0.2:
+                continue
+            label = " ".join(str(span.get("text") or "") for span in line.get("spans", [])).strip()
+            if re.search(r"(?:^|[/|:–-]\s*)(?:table of contents|tabla de contenidos|"
+                         r"índice(?: general)?|indice(?: general)?)\s*$", label.casefold()):
+                return True
+    return False
 
 
 def _typographic_outline(doc) -> list[dict]:
@@ -21,6 +34,8 @@ def _typographic_outline(doc) -> list[dict]:
     spans: list[tuple[float, int]] = []
     lines: list[tuple[int, str, float, float, float, float]] = []
     for page_number, page in enumerate(doc, start=1):
+        if _is_contents_page(page):
+            continue
         for block in page.get_text("dict").get("blocks", []):
             for line in block.get("lines", []):
                 line_spans = line.get("spans", [])
