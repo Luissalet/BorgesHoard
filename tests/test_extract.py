@@ -83,6 +83,28 @@ def test_contents_page_is_not_mistaken_for_section_destinations(tmp_path):
     assert result.outline == [{"level": 1, "title": "Getting Started", "page": 2}]
 
 
+def test_sparse_cover_does_not_become_three_section_headings(tmp_path):
+    import pymupdf as fitz
+
+    path = tmp_path / "manual_with_cover.pdf"
+    with fitz.open() as pdf:
+        cover = pdf.new_page()
+        cover.insert_text((50, 70), "Advanced Text Rendering", fontsize=24)
+        cover.insert_text((50, 110), "USER GUIDE", fontsize=28)
+        cover.insert_text((50, 150), "Release 1.0", fontsize=18)
+        for page_index in range(2):
+            page = pdf.new_page()
+            page.insert_text((50, 70), "Installation" if page_index == 0 else "Configuration",
+                             fontsize=20)
+            for y in (130, 155, 180, 205):
+                page.insert_text((50, y), "This section explains several important steps in detail.", fontsize=11)
+        pdf.save(str(path))
+
+    result = extract(path)
+    assert all(entry["page"] != 1 for entry in result.outline)
+    assert {entry["title"] for entry in result.outline} >= {"Installation", "Configuration"}
+
+
 def test_two_column_pdf_does_not_invent_reading_order(tmp_path):
     import pymupdf as fitz
 

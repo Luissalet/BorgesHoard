@@ -8,7 +8,7 @@ from pathlib import Path
 from .base import Extracted, Unit, finish
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
-PDF_STRUCTURE_VERSION = 4  # exclude contents pages from typography inference
+PDF_STRUCTURE_VERSION = 5  # exclude sparse covers from typography inference
 
 
 def _is_contents_page(page) -> bool:
@@ -24,6 +24,15 @@ def _is_contents_page(page) -> bool:
     return False
 
 
+def _has_sparse_cover(doc) -> bool:
+    """Only treat page one as a cover when the next page is much denser."""
+    if len(doc) < 3:
+        return False
+    first = len("".join((doc[0].get_text("text") or "").split()))
+    second = len("".join((doc[1].get_text("text") or "").split()))
+    return 0 < first < 200 and second >= first * 2
+
+
 def _typographic_outline(doc) -> list[dict]:
     """Low-confidence heading candidates from unusually large text lines.
 
@@ -33,8 +42,9 @@ def _typographic_outline(doc) -> list[dict]:
     """
     spans: list[tuple[float, int]] = []
     lines: list[tuple[int, str, float, float, float, float]] = []
+    sparse_cover = _has_sparse_cover(doc)
     for page_number, page in enumerate(doc, start=1):
-        if _is_contents_page(page):
+        if (page_number == 1 and sparse_cover) or _is_contents_page(page):
             continue
         for block in page.get_text("dict").get("blocks", []):
             for line in block.get("lines", []):
