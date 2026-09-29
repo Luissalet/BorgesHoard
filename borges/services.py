@@ -60,7 +60,7 @@ class Services:
         self.worker.start()
         stale = self.documents.count_stale()
         if stale:
-            log.info("%d documents were chunked with older rules: they will be re-chunked by the startup reindex", stale)
+            log.info("%d documents need updated indexing; startup will reindex them", stale)
         if self.config.autostart or stale:
             self._preload = threading.Thread(target=self._warm_up, name="borges-model", daemon=True)
             self._preload.start()

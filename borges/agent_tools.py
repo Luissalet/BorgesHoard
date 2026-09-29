@@ -158,7 +158,7 @@ def run_status(services: Services, _: Empty) -> dict:
     worker = s["worker"]
     return {"model": s["model"], "counts": s["counts"], "collections": s["collections"], "indexing": worker["busy"], "queue": worker["queued"],
             "current": worker["current"], "chunks_pending_embedding": s["chunks_pending_embedding"], "reindex_needed": s["reindex_needed"],
-            "note": f"reindexación necesaria: {s['reindex_needed']} documentos (chunking rules changed; they are re-chunked in the background)" if s["reindex_needed"] else None,
+            "note": f"reindexación necesaria: {s['reindex_needed']} documentos (índice antiguo; se actualizan en segundo plano)" if s["reindex_needed"] else None,
             "watching": s["watching"]}
 
 

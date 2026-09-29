@@ -49,6 +49,23 @@ def test_pdf_bookmark_structure_survives_index_and_document_read(indexed, librar
     assert document["outline"][1]["title"] == "Introducción › Método"
 
 
+def test_existing_pdf_without_structure_is_reindexed_once(indexed):
+    services, collection = indexed
+    before = docs_by_path(services)
+    with services.db.transaction() as conn:
+        conn.execute("UPDATE documents SET meta = '{}' WHERE rel_path = 'cuentos_valdeniebla.pdf'")
+
+    assert services.documents.count_stale() == 1
+    progress = run(services, collection)
+    assert progress.files_changed == 1
+    after = docs_by_path(services)
+    assert after["apuntes.md"]["indexed_at"] == before["apuntes.md"]["indexed_at"]
+    assert services.documents.count_stale() == 0
+    doc = services.queries.document(after["cuentos_valdeniebla.pdf"]["id"])
+    assert doc["structure_source"] == "none" and doc["structure"] == []
+    assert run(services, collection).files_changed == 0
+
+
 def test_second_pass_touches_nothing(indexed):
     services, collection = indexed
     before = docs_by_path(services)

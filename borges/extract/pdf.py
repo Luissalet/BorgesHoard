@@ -7,6 +7,7 @@ from pathlib import Path
 from .base import Extracted, Unit, finish
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
+PDF_STRUCTURE_VERSION = 1  # re-extract older PDFs once to populate declared bookmarks
 
 
 def extract_pdf(path: Path) -> Extracted:

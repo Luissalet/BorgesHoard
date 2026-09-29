@@ -12,8 +12,16 @@ import numpy as np
 from .chunking import INDEX_VERSION, Chunk
 from .db import Database
 from .extract.base import Extracted
+from .extract.pdf import PDF_STRUCTURE_VERSION
 
 DEFAULT_EXCLUDE = ["**/node_modules/**", "**/.git/**", "**/venv/**", "**/.venv/**", "**/__pycache__/**", "**/~$*", "**/.*"]
+
+
+def pdf_structure_current(raw_meta: str) -> bool:
+    try:
+        return json.loads(raw_meta or "{}").get("pdf_structure_version") == PDF_STRUCTURE_VERSION
+    except (TypeError, ValueError, AttributeError):
+        return False
 
 
 @dataclass
@@ -160,21 +168,25 @@ class DocumentStore:
         self.db = db
 
     # ---------- incremental bookkeeping ----------
-    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str, int]]:
-        """rel_path → (id, size, mtime, hash, status, index_version) for every document of a collection."""
+    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str, int, str]]:
+        """rel_path → (id, size, mtime, hash, status, index_version, meta)."""
         with self.db.lock:
-            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status, index_version FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
-        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"], r["index_version"]) for r in rows}
+            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status, index_version, meta FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
+        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"], r["index_version"], r["meta"]) for r in rows}
 
     def count_stale(self, collection_id: int | None = None) -> int:
-        """Documents chunked with older rules; they are re-chunked by the next reindex of their collection."""
-        sql = "SELECT COUNT(*) FROM documents WHERE index_version < ?"
-        params: list = [INDEX_VERSION]
+        """Documents needing updated chunks or one-time PDF structure extraction."""
+        sql = "SELECT kind, status, index_version, meta FROM documents WHERE 1=1"
+        params: list = []
         if collection_id is not None:
             sql += " AND collection_id = ?"
             params.append(collection_id)
         with self.db.lock:
-            return self.db.conn.execute(sql, params).fetchone()[0]
+            rows = self.db.conn.execute(sql, params).fetchall()
+        return sum(row["index_version"] < INDEX_VERSION or
+                   (row["kind"] == "pdf" and row["status"] == "ok"
+                    and not pdf_structure_current(row["meta"]))
+                   for row in rows)
 
     def touch(self, document_id: int, size: int, mtime: float) -> None:
         with self.db.transaction() as conn:

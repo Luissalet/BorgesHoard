@@ -14,7 +14,8 @@ from pathlib import Path
 from .chunking import INDEX_VERSION, chunk_units, merge_small_units
 from .embedder import Embedder
 from .extract import extract, kind_for
-from .store import Collection, CollectionStore, DocumentStore
+from .store import Collection, CollectionStore, DocumentStore, pdf_structure_current
+from .extract.pdf import PDF_STRUCTURE_VERSION
 
 log = logging.getLogger("borges.index")
 
@@ -163,6 +164,8 @@ class Indexer:
         stat = path.stat()
         size, mtime = stat.st_size, stat.st_mtime
         current = bool(known) and known[4] == "ok" and known[5] >= INDEX_VERSION
+        if path.suffix.lower() == ".pdf" and current:
+            current = pdf_structure_current(known[6])
         if current and known[1] == size and abs(known[2] - mtime) < 1e-6:
             return  # unchanged (cheap check, no read)
         if size > MAX_FILE_BYTES:
@@ -180,7 +183,8 @@ class Indexer:
         extracted.units = merge_small_units(extracted.units)
         chunks = chunk_units(extracted.units)
         meta = ({"pdf_outline": extracted.outline,
-                 "pdf_outline_source": extracted.outline_source}
+                 "pdf_outline_source": extracted.outline_source,
+                 "pdf_structure_version": PDF_STRUCTURE_VERSION}
                 if kind == "pdf" else None)
         self.documents.replace(collection.id, rel, extracted, chunks, size, mtime, digest,
                                meta=meta)
