@@ -24,6 +24,8 @@ class Extracted:
     units: list[Unit] = field(default_factory=list)
     needs_ocr: bool = False
     pages: int = 0
+    outline: list[dict] = field(default_factory=list)
+    outline_source: str = "none"
 
     @property
     def chars(self) -> int:

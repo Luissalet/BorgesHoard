@@ -19,6 +19,26 @@ def test_scanned_pdf_is_flagged(tmp_path):
     assert result.needs_ocr is True and result.pages == 2 and result.units == []
 
 
+def test_pdf_bookmarks_provide_declared_page_structure(tmp_path):
+    import pymupdf as fitz
+
+    path = make_pdf(tmp_path / "manual.pdf")
+    with fitz.open(str(path)) as doc:
+        doc.set_toc([[1, "Introducción", 1], [2, "Método", 2],
+                     [1, "Conclusiones", 3]])
+        doc.saveIncr()
+
+    result = extract(path)
+    assert result.outline_source == "bookmarks"
+    assert result.outline == [
+        {"level": 1, "title": "Introducción", "page": 1},
+        {"level": 2, "title": "Método", "page": 2},
+        {"level": 1, "title": "Conclusiones", "page": 3},
+    ]
+    assert [unit.title for unit in result.units] == [
+        "Introducción", "Introducción › Método", "Conclusiones"]
+
+
 def test_docx_headings_become_sections(tmp_path):
     result = extract(make_docx(tmp_path / "memoria.docx"))
     assert result.kind == "docx"
