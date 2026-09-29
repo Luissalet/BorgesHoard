@@ -8,7 +8,7 @@ from pathlib import Path
 from .base import Extracted, Unit, finish
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
-PDF_STRUCTURE_VERSION = 5  # exclude sparse covers from typography inference
+PDF_STRUCTURE_VERSION = 6  # recognize standalone contents headings
 
 
 def _is_contents_page(page) -> bool:
@@ -18,8 +18,9 @@ def _is_contents_page(page) -> bool:
             if float(line.get("bbox", (0, page.rect.height))[1]) > page.rect.height * 0.2:
                 continue
             label = " ".join(str(span.get("text") or "") for span in line.get("spans", [])).strip()
-            if re.search(r"(?:^|[/|:–-]\s*)(?:table of contents|tabla de contenidos|"
-                         r"índice(?: general)?|indice(?: general)?)\s*$", label.casefold()):
+            if re.search(r"(?:^|[/|:–-]\s*)(?:table of contents|contents|"
+                         r"tabla de contenidos|sumario|índice(?: general)?|"
+                         r"indice(?: general)?)\s*$", label.casefold()):
                 return True
     return False
 

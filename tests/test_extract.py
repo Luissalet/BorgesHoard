@@ -1,5 +1,7 @@
 """Extraction per format on generated fixtures."""
 
+import pytest
+
 from fixtures import BUDGET_EN, FUNES, JARDIN, make_csv, make_docx, make_epub, make_html, make_md, make_pdf, make_scanned_pdf, make_txt
 
 from borges.extract import extract, kind_for
@@ -63,13 +65,16 @@ def test_pdf_without_bookmarks_infers_only_prominent_unique_headings(tmp_path):
         "Introducción", "Introducción › Método", "Introducción › Método"]
 
 
-def test_contents_page_is_not_mistaken_for_section_destinations(tmp_path):
+@pytest.mark.parametrize("contents_heading", [
+    "User Guide / Table of Contents", "Contents", "Sumario",
+])
+def test_contents_page_is_not_mistaken_for_section_destinations(tmp_path, contents_heading):
     import pymupdf as fitz
 
     path = tmp_path / "manual_with_contents.pdf"
     with fitz.open() as pdf:
         contents = pdf.new_page()
-        contents.insert_text((50, 50), "User Guide / Table of Contents", fontsize=19)
+        contents.insert_text((50, 50), contents_heading, fontsize=19)
         contents.insert_text((50, 100), "Getting Started", fontsize=18)
         contents.insert_text((50, 135), "Installation .............. 2", fontsize=16)
         contents.insert_text((50, 200), "This list points to later pages in the manual.", fontsize=11)
