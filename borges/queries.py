@@ -96,6 +96,10 @@ class Queries:
         doc["collection"] = col["name"] if col else None
         doc["path"] = str(Path(col["path"]) / row["rel_path"]) if col else row["rel_path"]
         doc["outline"] = [dict(u) for u in units]
+        meta = doc["meta"]
+        structure = meta.get("pdf_outline") if doc["kind"] == "pdf" else None
+        doc["structure"] = structure if isinstance(structure, list) else []
+        doc["structure_source"] = meta.get("pdf_outline_source", "none") if doc["kind"] == "pdf" else "none"
         return doc
 
     def document_brief(self, document_id: int) -> dict | None:

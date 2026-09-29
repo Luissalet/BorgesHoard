@@ -179,7 +179,11 @@ class Indexer:
             raise
         extracted.units = merge_small_units(extracted.units)
         chunks = chunk_units(extracted.units)
-        self.documents.replace(collection.id, rel, extracted, chunks, size, mtime, digest)
+        meta = ({"pdf_outline": extracted.outline,
+                 "pdf_outline_source": extracted.outline_source}
+                if kind == "pdf" else None)
+        self.documents.replace(collection.id, rel, extracted, chunks, size, mtime, digest,
+                               meta=meta)
         progress.files_changed += 1
         self.on_change()
 

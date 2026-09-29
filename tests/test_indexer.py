@@ -3,7 +3,7 @@
 import os
 import time
 
-from fixtures import make_md, make_txt
+from fixtures import make_md, make_pdf, make_txt
 
 from borges.indexer import Matcher, Progress, glob_to_regex, walk
 
@@ -27,6 +27,26 @@ def test_first_pass_indexes_everything(indexed):
     counts = services.documents.counts()
     assert counts["documents"] == 8 and counts["needs_ocr"] == 1 and counts["errors"] == 0
     assert services.documents.count_without_embedding("fake-hash") == 0
+
+
+def test_pdf_bookmark_structure_survives_index_and_document_read(indexed, library):
+    import pymupdf as fitz
+
+    services, collection = indexed
+    path = make_pdf(library / "manual.pdf")
+    with fitz.open(str(path)) as pdf:
+        pdf.set_toc([[1, "Introducción", 1], [2, "Método", 2]])
+        pdf.saveIncr()
+
+    assert run(services, collection).files_changed == 1
+    doc_id = docs_by_path(services)["manual.pdf"]["id"]
+    document = services.queries.document(doc_id)
+    assert document["structure_source"] == "bookmarks"
+    assert document["structure"] == [
+        {"level": 1, "title": "Introducción", "page": 1},
+        {"level": 2, "title": "Método", "page": 2},
+    ]
+    assert document["outline"][1]["title"] == "Introducción › Método"
 
 
 def test_second_pass_touches_nothing(indexed):
