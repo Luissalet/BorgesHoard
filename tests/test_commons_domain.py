@@ -2,6 +2,7 @@
 OCR routing of scanned PDFs and the dense ranking."""
 
 import zipfile
+import os
 
 import numpy as np
 import pytest
@@ -24,7 +25,10 @@ def test_add_collection_accepts_a_quoted_pasted_path(services, library):
     assert services.add_collection("Again", f"'{library}'", [], None, False, False).id == first.id  # idempotent through the quotes
 
 
-@pytest.mark.parametrize("bad", ["/", "/etc", "/usr/lib"])
+SYSTEM_FOLDERS = ["/", os.environ["SystemRoot"], os.environ["ProgramFiles"]] if os.name == "nt" else ["/", "/etc", "/usr/lib"]
+
+
+@pytest.mark.parametrize("bad", SYSTEM_FOLDERS)
 def test_add_collection_refuses_broad_and_system_folders(services, bad):
     with pytest.raises(ValueError, match="cannot be indexed"):
         services.add_collection("Nope", bad, [], None, False, False)
@@ -44,7 +48,7 @@ def test_add_collection_refuses_secret_folders_and_the_data_folder(services, tmp
 
 
 def test_add_collection_policy_over_http_and_tool(client):
-    refused = client.post("/api/collections", json={"path": "/etc"})
+    refused = client.post("/api/collections", json={"path": SYSTEM_FOLDERS[1]})
     assert refused.status_code == 400 and "cannot be indexed" in refused.text
     auth = {"Authorization": f"Bearer {client.services.token}"}
     via_tool = client.post("/api/agent/call", json={"name": "library_add_collection", "arguments": {"path": str(client.services.config.data_dir)}}, headers=auth)
