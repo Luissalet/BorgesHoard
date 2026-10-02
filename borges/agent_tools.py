@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 from pydantic import BaseModel, Field
 
 from .hoard_link.agentkit import AppError, Empty, Tool, ann, call_tool as run_tool, tool_catalog as catalog_of
@@ -18,6 +19,7 @@ Prefer mode hybrid; use mode bm25 for exact words, names or codes, and dense for
 A document with needs_ocr is a scanned PDF without text: it is listed but cannot be searched; say so if it looks relevant.
 library_add_collection and library_reindex change the index; call them only when the user asks. Indexing runs in the background: library_status shows the queue.
 The library can also hold the user's own past Faustus conversations (a `faustus` source), indexed as one document per chat. For questions about past conversations or decisions ("¿qué dijimos?", "¿qué decidimos?", "¿en qué quedamos?", "what did we decide", "what did we say about"), call library_search with source="faustus" (optionally since/until for a date range), or chats_recent to browse recent chats, then quote the `citation` field verbatim — it already reads like `[chat «Title» · date · turno N]`.
+Other apps of the family use `embed_texts` / `embed_status` to embed text with this library's multilingual model (not for answering the user).
 A `links` source indexes the user's saved links from Links Hoard (one document per link, the page text as Links Hoard extracted it). For "what did I save about", "aquel artículo que guardé", "dónde leí", call library_search with source="links"; the citation reads `[enlace «Title» · site]` and the hit carries the `url`."""
 
 
@@ -169,6 +171,46 @@ def run_add_collection(services: Services, args: AddCollectionArgs) -> dict:
     return {"ok": True, "collection": collection.to_dict(), "note": "Indexing has started in the background; library_status shows progress."}
 
 
+# ---------- family service: text embeddings (the owner of `fam_embed`; see hoard_link docs/commons/services.md section 6) ----------
+EMBED_MAX_TEXTS = 512
+EMBED_TEXT_CHARS = 4000  # each text is cut here before the model sees it (the model reads far fewer tokens anyway)
+EMBED_WAIT_S = 100.0  # how long a call waits for a model that is still loading or downloading
+FAMILY_TOOLS = frozenset({"embed_texts", "embed_status"})  # answers for programs: never cut to the assistant's size budget
+
+
+class EmbedTextsArgs(BaseModel):
+    texts: list[str] = Field(..., min_length=1, description=f"1 to {EMBED_MAX_TEXTS} texts; each is cut to {EMBED_TEXT_CHARS} characters.")
+    kind: str = Field("document", pattern="^(document|query)$", description="document (default) or query: how each text is embedded.")
+    normalize: bool = Field(True, description="Unit-length vectors. This model's vectors always are, and `normalized` says so.")
+
+
+def run_embed_texts(services: Services, args: EmbedTextsArgs) -> dict:
+    if len(args.texts) > EMBED_MAX_TEXTS:
+        raise AppError("too_many_texts", f"At most {EMBED_MAX_TEXTS} texts per call (got {len(args.texts)}).", status=400,
+                       hint="Send the texts in batches.")
+    embedder = services.embedder
+    if embedder.name == "none":
+        raise AppError("embeddings_disabled", "Embeddings are disabled in this app (BORGES_EMBED=none).", status=400)
+    if not services.wait_for_embedder(EMBED_WAIT_S):
+        state = embedder.status()
+        if state.get("state") == "error":
+            raise AppError("embedder_error", f"The embedding model could not be loaded: {state.get('error')}", status=503)
+        raise AppError("embedder_loading", "The embedding model is still loading or downloading; try again in a minute.", status=503,
+                       hint="library_status or embed_status show the state.")
+    texts = [t[:EMBED_TEXT_CHARS] for t in args.texts]
+    if args.kind == "query":
+        matrix = np.stack([embedder.embed_query(t) for t in texts])
+    else:
+        matrix = embedder.embed_documents(texts)
+    return {"model": embedder.model, "dim": int(matrix.shape[1]), "vectors": matrix.astype("float32").tolist(), "normalized": True}
+
+
+def run_embed_status(services: Services, _: Empty) -> dict:
+    status = services.embedder.status()
+    state = "loading" if status.get("state") == "not_loaded" else status.get("state")
+    return {**status, "state": state, "ready": services.embedder.ready()}
+
+
 TOOLS: list[Tool] = [
     Tool("library_search", "Search your documents, past chats and saved links; exact citation, snippet. Busca documentos, chats, enlaces.\nHybrid BM25 + multilingual embeddings. Filter source='faustus' for chats, 'links' for saved links, since/until for a date range; citations read «Title», p. 12 / file.md § Section / [chat «Title» · date · turno N] / [enlace «Title» · site].\nSinónimos: buscar, dónde leí, dónde escribí, qué dijimos, qué decidimos, apuntes, mis documentos, mis chats, conversaciones, cita, página, biblioteca, libro, tesis, notas, artículo.", SearchArgs, ann(True), run_search),
     Tool("library_read", "Read the exact text of a page or section before quoting it. Keywords: leer página, cita textual, qué dice.\nRead the exact text of one page or section of a document (by page, section ordinal or a chunk_id from library_search), with prev/next pointers. Use it before quoting so the quote is verbatim.\nSinónimos: leer, página, sección, capítulo, pasaje, texto completo, cita textual, qué dice, manuscrito, libro, apuntes.", ReadArgs, ann(True), run_read),
@@ -180,6 +222,8 @@ TOOLS: list[Tool] = [
     Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, ann(False, False, True), run_reindex),
     Tool("library_add_collection", "Add a folder to the library and index it (only when asked). Keywords: añadir carpeta, indexar, biblioteca.\nAdd a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, ann(False, False, True), run_add_collection),
     Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, ann(True), run_chats_recent),
+    Tool("embed_texts", "Embed texts into vectors with the family's multilingual model. Keywords: embeddings, vectores.\nTurn 1 to 512 texts into unit-length vectors (document or query side) with Borges's multilingual MiniLM model, the one embedding space of the family; the answer says `model` and `dim`: store both next to the vectors and re-embed when they change. For programs, not for reading.\nSinónimos: embeddings, vectores, incrustaciones, representar texto, similitud semántica, búsqueda semántica, modelo de lenguaje.", EmbedTextsArgs, ann(True), run_embed_texts),
+    Tool("embed_status", "State of the embedding model: ready, loading, downloading or disabled. Keywords: modelo de embeddings, listo.\nWhether `embed_texts` can answer now: backend, model, dimension, state (disabled, loading, downloading, ready, error), error and load time. Check before indexing a lot of text.\nSinónimos: estado del modelo, modelo de embeddings, está listo, cargando, descargando, dimensión, vectores.", Empty, ann(True), run_embed_status),
 ]
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
@@ -193,7 +237,7 @@ def call_tool(services: Services, name: str, arguments: dict | None, *, cap: boo
     """Run one tool through the shared agent kit (argument validation, result cap). An expected "not found"
     (`LookupError`) keeps the 404 it always had; a bare `ValueError` is a 400 `invalid`."""
     try:
-        return run_tool(TOOLS_BY_NAME, services, name, arguments, cap=cap)
+        return run_tool(TOOLS_BY_NAME, services, name, arguments, cap=cap and name not in FAMILY_TOOLS)
     except LookupError as error:
         if isinstance(error, KeyError):  # an unknown tool: the router answers 404 unknown_tool itself
             raise

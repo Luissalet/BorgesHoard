@@ -61,6 +61,18 @@ class Services:
         if self.config.autostart:
             self.faustus_scheduler.start()
 
+    def wait_for_embedder(self, timeout: float) -> bool:
+        """True once the embedding model is loaded, waiting up to `timeout` seconds for a load or download that is running (or
+        starting one). A model that failed to load stays False at once."""
+        if self.embedder.ready():
+            return True
+        loader = self._preload if self._preload is not None and self._preload.is_alive() else None
+        if loader is None:
+            loader = threading.Thread(target=self.embedder.ensure_loaded, name="borges-model", daemon=True)
+            loader.start()
+        loader.join(timeout)
+        return self.embedder.ready()
+
     def _warm_up(self) -> None:
         if self.embedder.ensure_loaded():
             self.search.invalidate()
