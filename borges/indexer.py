@@ -15,7 +15,7 @@ from .chunking import INDEX_VERSION, chunk_units, merge_small_units
 from .embedder import Embedder
 from .extract import extract, kind_for
 from .store import Collection, CollectionStore, DocumentStore, pdf_structure_current
-from .extract.pdf import PDF_STRUCTURE_VERSION
+from .extract.pdf import PDF_STRUCTURE_VERSION, ocr_enabled
 
 log = logging.getLogger("borges.index")
 
@@ -166,6 +166,8 @@ class Indexer:
         current = bool(known) and known[4] == "ok" and known[5] >= INDEX_VERSION
         if path.suffix.lower() == ".pdf" and current:
             current = pdf_structure_current(known[6])
+            if current and known[7] and ocr_enabled():
+                current = False  # a scan listed without text is read now that the OCR service is running
         if current and known[1] == size and abs(known[2] - mtime) < 1e-6:
             return  # unchanged (cheap check, no read)
         if size > MAX_FILE_BYTES:

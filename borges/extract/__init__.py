@@ -7,7 +7,8 @@ from typing import Callable
 
 from .base import Extracted, Unit
 from .docx import extract_docx
-from .html import extract_epub, extract_html
+from .epub import extract_epub
+from .html import extract_html
 from .pdf import extract_pdf
 from .text import extract_csv, extract_markdown, extract_plain
 

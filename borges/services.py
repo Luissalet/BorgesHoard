@@ -6,11 +6,13 @@ import logging
 import shutil
 import threading
 import time
+from pathlib import Path
 
 from . import __version__
 from .config import Config
 from .db import Database
 from .embedder import make_embedder
+from .hoard_link import paths
 from .hoard_link.tokens import read_or_create_token
 from .faustus_source import FaustusIndexer, FaustusScheduler
 from .indexer import Indexer
@@ -71,6 +73,11 @@ class Services:
 
     # ---------- collections ----------
     def add_collection(self, name: str, path: str, include: list[str], exclude: list[str] | None, watch: bool, code: bool):
+        path = paths.clean_user_path(path)  # Explorer's "Copy as path" arrives quoted
+        if Path(path).is_dir():  # a missing folder keeps the store's own message
+            problem = paths.unsafe_folder(path, data_dir=self.config.data_dir, lang="en")
+            if problem:
+                raise ValueError(f"This folder cannot be indexed: {problem}.")
         collection, created = self.collections.add(name, path, include, exclude, watch, code)
         if created:
             self.worker.enqueue(collection.id)

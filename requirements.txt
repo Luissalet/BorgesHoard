@@ -12,9 +12,8 @@ fastembed==0.8.1
 onnxruntime==1.30.0
 tokenizers==0.23.2
 pymupdf==1.28.2
+# python-docx and EbookLib only build the DOCX and EPUB fixtures of the tests; reading both formats is the shared hoard_link.docs
 python-docx==1.2.0
 EbookLib==0.20
-beautifulsoup4==4.15.0
-lxml==6.1.3
 watchdog==6.0.0
 pytest==9.1.1

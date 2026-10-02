@@ -2,13 +2,47 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from pathlib import Path
 
+from ..hoard_link import fam_docs
 from .base import Extracted, Unit, finish
+
+log = logging.getLogger("borges.pdf")
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
 PDF_STRUCTURE_VERSION = 6  # recognize standalone contents headings
+OCR_MAX_PAGES = 2000
+
+
+def ocr_enabled() -> bool:
+    """Scanned pages are read by the family's OCR service (Kafka's Hoard through the hub) when it is running.
+    BORGES_OCR=0 turns that off; BORGES_OCR_LANG is the language asked of the engine (default Spanish)."""
+    return os.environ.get("BORGES_OCR", "1").strip() != "0" and fam_docs.available()
+
+
+def _page_chars(text: str) -> int:
+    return len("".join(text.split()))
+
+
+def _ocr_thin_pages(path: Path, units: list[Unit], page_count: int) -> int:
+    """Fill the pages that have (almost) no text layer with Kafka's OCR text; returns how many pages were read. The pages that
+    already have text keep PyMuPDF's, so the page coordinates and the outline titles of the citations never change."""
+    got = fam_docs.extract(str(path), ocr="auto", max_pages=min(page_count, OCR_MAX_PAGES), local_fallback=False,
+                           lang=os.environ.get("BORGES_OCR_LANG", "").strip() or "es")
+    if not got.get("ok"):
+        log.info("%s: OCR through the family service failed (%s)", path.name, got.get("error") or got.get("kind"))
+        return 0
+    read = {int(u["number"]): str(u.get("text") or "") for u in got.get("units") or [] if u.get("kind") == "page" and u.get("number")}
+    done = 0
+    for unit in units:
+        text = read.get(unit.number, "")
+        if _page_chars(unit.text) < MIN_TEXT_PER_PAGE and _page_chars(text) > _page_chars(unit.text):
+            unit.text = text
+            done += 1
+    return done
 
 
 def _is_contents_page(page) -> bool:
@@ -153,6 +187,10 @@ def extract_pdf(path: Path) -> Extracted:
                               title=" › ".join(path_titles), text=text))
     title = meta_title.strip() or path.stem
     needs_ocr = page_count > 0 and total_chars < MIN_TEXT_PER_PAGE * page_count
+    if needs_ocr and ocr_enabled():
+        if _ocr_thin_pages(path, units, page_count):
+            total_chars = sum(_page_chars(unit.text) for unit in units)
+            needs_ocr = total_chars < MIN_TEXT_PER_PAGE * page_count
     return Extracted(title=title, kind="pdf", units=finish(units),
                      needs_ocr=needs_ocr, pages=page_count, outline=outline,
                      outline_source=outline_source)

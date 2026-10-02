@@ -19,15 +19,11 @@ dependencies = [
   "numpy>=1.26",
   "fastembed>=0.7",
   "pymupdf>=1.24",
-  "python-docx>=1.1",
-  "ebooklib>=0.18",
-  "beautifulsoup4>=4.12",
-  "lxml>=5",
   "watchdog>=4",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "python-docx>=1.1", "ebooklib>=0.18"]  # the last two only build the DOCX and EPUB test fixtures
 gpu = ["fastembed-gpu>=0.7"]
 
 [project.scripts]

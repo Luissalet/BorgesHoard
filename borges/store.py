@@ -13,6 +13,7 @@ from .chunking import INDEX_VERSION, Chunk
 from .db import Database
 from .extract.base import Extracted
 from .extract.pdf import PDF_STRUCTURE_VERSION
+from .hoard_link import paths
 
 DEFAULT_EXCLUDE = ["**/node_modules/**", "**/.git/**", "**/venv/**", "**/.venv/**", "**/__pycache__/**", "**/~$*", "**/.*"]
 
@@ -96,7 +97,7 @@ class CollectionStore:
 
     def add(self, name: str, path: str, include: list[str], exclude: list[str] | None, watch: bool, code: bool) -> tuple[Collection, bool]:
         """Create a folder collection; returns (collection, created). Adding an existing folder returns it unchanged."""
-        resolved = str(Path(path).expanduser().resolve())
+        resolved = str(Path(paths.clean_user_path(path)).resolve())
         if not Path(resolved).is_dir():
             raise ValueError(f"The folder does not exist: {path}")
         existing = self.by_path(resolved)
@@ -168,11 +169,11 @@ class DocumentStore:
         self.db = db
 
     # ---------- incremental bookkeeping ----------
-    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str, int, str]]:
-        """rel_path → (id, size, mtime, hash, status, index_version, meta)."""
+    def fingerprints(self, collection_id: int) -> dict[str, tuple[int, int, float, str, str, int, str, int]]:
+        """rel_path → (id, size, mtime, hash, status, index_version, meta, needs_ocr)."""
         with self.db.lock:
-            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status, index_version, meta FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
-        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"], r["index_version"], r["meta"]) for r in rows}
+            rows = self.db.conn.execute("SELECT id, rel_path, size, mtime, hash, status, index_version, meta, needs_ocr FROM documents WHERE collection_id = ?", (collection_id,)).fetchall()
+        return {r["rel_path"]: (r["id"], r["size"], r["mtime"], r["hash"], r["status"], r["index_version"], r["meta"], r["needs_ocr"]) for r in rows}
 
     def count_stale(self, collection_id: int | None = None) -> int:
         """Documents needing updated chunks or one-time PDF structure extraction."""

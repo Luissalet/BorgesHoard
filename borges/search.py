@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import re
 import threading
 import time
-import unicodedata
 from pathlib import Path
 from typing import Callable
 
@@ -14,109 +12,29 @@ import numpy as np
 
 from .db import Database
 from .embedder import Embedder
+from .hoard_link.docs import textsearch, vecmath
 from .queries import Queries, citation
 from .store import DocumentStore
 
 RRF_K = 60
 MIN_QUERY_CHARS = 3  # shorter queries are refused
-PREFIX_MIN_CHARS = 3  # terms shorter than this match whole words only (no prefix expansion)
 PER_SECTION = 1  # hits shown per (document, page/section); the rest go into `also`
 CANDIDATES = 40  # per retriever before fusion
 DENSE_MIN_SCORE = 0.2  # cosine below this is noise for MiniLM-class models
 SNIPPET_CHARS = 240
-_WORD = re.compile(r"\w+", re.UNICODE)
 
 Reranker = Callable[[str, list[dict]], list[dict]]  # hook: (query, hits) -> hits, reordered
 
 
-def fold(text: str) -> str:
-    """Lowercase and strip diacritics keeping the same length (one char per char) so offsets map back."""
-    out = []
-    for ch in text.lower():
-        decomposed = unicodedata.normalize("NFD", ch)
-        out.append(decomposed[0] if decomposed and unicodedata.category(decomposed[0]) != "Mn" else ch)
-    return "".join(out)
-
-
-STOPWORDS = frozenset(
-    "de la el los las un una unos unas y o u e en del al a que con por para se su sus lo le les es son no ni como más muy ya "
-    "mi mis tu tus me te sobre acerca dónde donde qué cuál cuáles cómo cuándo quién hay he ha leí escribí dice dijo del este esta esto "
-    "the of an and or in on to is are was were for with that this about where what which how when who did i my".split()
-)
-
-
-def stem(word: str) -> str:
-    """Very light Spanish-friendly stem used only as an FTS prefix: hojas→hoja, árboles→árbol, ciudades→ciudad."""
-    w = word.lower()
-    if len(w) > 5 and w.endswith("es"):
-        return w[:-2]
-    if len(w) > 4 and w.endswith("s"):
-        return w[:-1]
-    return w
-
-
-def content_words(q: str) -> list[str]:
-    words = [w for w in _WORD.findall(q) if w.strip("_")]
-    kept = [w for w in words if fold(w) not in STOPWORDS and len(w) > 1]
-    return kept or words
-
-
-def fts_query(q: str) -> tuple[str, str]:
-    """(AND query, OR query) for FTS5; stopwords dropped, terms of PREFIX_MIN_CHARS+ letters match as prefixes of their stem."""
-    words = content_words(q)
-    if not words:
-        return "", ""
-    quoted = [f'"{stem(w)}"*' if len(w) >= PREFIX_MIN_CHARS else f'"{w}"' for w in words]
-    return " AND ".join(quoted), " OR ".join(quoted)
-
-
-def query_terms(q: str) -> list[str]:
-    """Folded stems used to highlight matches at word starts."""
-    return [fold(stem(w)) if len(w) >= PREFIX_MIN_CHARS else fold(w) for w in content_words(q)]
-
-
-def highlight(text: str, terms: list[str], window: int = SNIPPET_CHARS) -> str:
-    """Return an excerpt centred on the first term match, with matches wrapped in <mark>."""
-    folded = fold(text)
-    positions: list[tuple[int, int]] = []
-    for term in terms:
-        for match in re.finditer(re.escape(term), folded):
-            start = match.start()
-            if start > 0 and folded[start - 1].isalnum():
-                continue  # only word starts
-            end = match.end()
-            while end < len(folded) and folded[end].isalnum():
-                end += 1  # mark the whole word, not just the stem
-            positions.append((start, end))
-    positions.sort()
-    if positions:
-        first = positions[0][0]
-        start = max(0, first - window // 3)
-    else:
-        start = 0
-    end = min(len(text), start + window)
-    # snap to word boundaries
-    if start > 0:
-        space = text.rfind(" ", max(0, start - 20), start)
-        start = space + 1 if space != -1 else (0 if start < 20 else start)
-    if end < len(text):
-        space = text.find(" ", end, min(len(text), end + 20))
-        end = space if space != -1 else end
-    pieces: list[str] = []
-    cursor = start
-    for s, e in positions:
-        if s < start or e > end or s < cursor:
-            continue
-        pieces.append(_esc(text[cursor:s]))
-        pieces.append(f"<mark>{_esc(text[s:e])}</mark>")
-        cursor = e
-    pieces.append(_esc(text[cursor:end]))
-    excerpt = "".join(pieces).replace("\n", " ")
-    return ("…" if start > 0 else "") + excerpt + ("…" if end < len(text) else "")
-
-
-def _esc(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def match_ladder(q: str) -> list[str]:
+    """MATCH expressions to try in order until one returns rows: every content word (stopwords dropped, from 3 letters a
+    prefix of its stem) AND'ed, then any of them. The words, the stemming and the quoting are the shared `textsearch`."""
+    ladder: list[str] = []
+    for mode in ("prefix", "or"):
+        expr = textsearch.fts_query(q, mode=mode)
+        if expr and expr not in ladder:
+            ladder.append(expr)
+    return ladder
 
 
 def _meta(value) -> dict:
@@ -167,10 +85,7 @@ class Search:
     # `collection_ids` restricts to a set of collections (a single filter, a source-kind filter, or both
     # intersected — see `_resolve_collection_ids`); None means the whole library.
     def bm25(self, q: str, limit: int, collection_ids: set[int] | None) -> list[tuple[int, float]]:
-        and_q, or_q = fts_query(q)
-        if not and_q:
-            return []
-        for match in (and_q, or_q):
+        for match in match_ladder(q):
             rows = self._fts(match, limit, collection_ids)
             if rows:
                 return rows
@@ -201,17 +116,17 @@ class Search:
         if len(ids) == 0:
             return []
         query = vector if vector is not None else self.embedder.embed_query(q)
-        scores = matrix @ query.astype(np.float32)
+        keep = np.ones(len(ids), dtype=bool)
         if collection_ids is not None:
-            allowed = self.queries.chunk_ids_for_collections(collection_ids)
-            mask = np.fromiter((int(i) in allowed for i in ids), dtype=bool, count=len(ids))
-            scores = np.where(mask, scores, -np.inf)
+            keep &= np.isin(ids, np.fromiter(self.queries.chunk_ids_for_collections(collection_ids), dtype=np.int64))
         if exclude is not None:
-            scores = np.where(ids == exclude, -np.inf, scores)
-        k = min(limit, len(ids))
-        top = np.argpartition(-scores, k - 1)[:k]
-        top = top[np.argsort(-scores[top])]
-        return [(int(ids[i]), float(scores[i])) for i in top if np.isfinite(scores[i]) and scores[i] >= DENSE_MIN_SCORE]
+            keep &= ids != exclude
+        rows = np.flatnonzero(keep)
+        if len(rows) == 0:
+            return []
+        searched = matrix if len(rows) == len(ids) else matrix[rows]  # a filter makes a smaller matrix; no filter, no copy
+        top = vecmath.topk(searched, query, limit, DENSE_MIN_SCORE, normalized=True)
+        return [(int(ids[rows[i]]), float(score)) for i, score in top]
 
     def _resolve_collection_ids(self, collection_id: int | None, source: str | None) -> set[int] | None:
         """Combine a single-collection filter with a source-kind filter (`source='faustus'` / `'links'`)."""
@@ -224,11 +139,8 @@ class Search:
     # ---------- fusion ----------
     @staticmethod
     def rrf(rankings: list[list[tuple[int, float]]]) -> list[tuple[int, float]]:
-        fused: dict[int, float] = {}
-        for ranking in rankings:
-            for rank, (chunk_id, _score) in enumerate(ranking, start=1):
-                fused[chunk_id] = fused.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
-        return sorted(fused.items(), key=lambda item: -item[1])
+        """Reciprocal rank fusion of rankings of `(chunk_id, score)` (the scores are not used, only the order)."""
+        return vecmath.rrf([[chunk_id for chunk_id, _ in ranking] for ranking in rankings], k=RRF_K)
 
     def search(self, q: str, mode: str = "hybrid", limit: int = 10, collection_id: int | None = None,
                source: str | None = None, since: str | None = None, until: str | None = None) -> dict:
@@ -262,18 +174,18 @@ class Search:
         vector = self.docs.embedding_for(chunk_id, self.embedder.model) if self.embedder.ready() else None
         if vector is not None:
             ranking = self.dense("", limit * 2, None, vector=vector, exclude=chunk_id)
-            terms = query_terms(chunk["text"][:200])
+            terms = textsearch.query_terms(chunk["text"][:200])
         else:
             words = " ".join(chunk["text"].split()[:12])
             ranking = [(cid, s) for cid, s in self.bm25(words, limit * 2, None) if cid != chunk_id]
-            terms = query_terms(words)
+            terms = textsearch.query_terms(words)
         hits = self._hydrate(ranking, " ".join(terms[:8]))
         return self._dedupe(hits)[:limit]
 
     # ---------- shaping ----------
     def _hydrate(self, ranking: list[tuple[int, float]], q: str) -> list[dict]:
         rows = self.queries.chunks_by_ids([cid for cid, _ in ranking])
-        terms = query_terms(q)
+        terms = textsearch.query_terms(q)
         hits = []
         for chunk_id, score in ranking:
             row = rows.get(chunk_id)
@@ -287,7 +199,7 @@ class Search:
                 "path": str(Path(row["collection_path"]) / row["rel_path"]), "page": row["page"], "section": row["section"], "line": row["line"],
                 "date": meta.get("date"), "project": meta.get("project") or None, "url": meta.get("url") or None,
                 "score": round(float(score), 6), "citation": citation(doc, row["page"], row["section"], row["line"]),
-                "snippet": highlight(row["text"], terms),
+                "snippet": textsearch.highlight(row["text"], terms, window=SNIPPET_CHARS),
             })
         return hits
 

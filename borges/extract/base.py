@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
+from ..hoard_link.docs.chunking import Unit
+from ..hoard_link.docs.textclean import clean_text as tidy
+
+__all__ = ["Unit", "Extracted", "clean_text", "finish", "MAX_UNIT_CHARS"]
+
 MAX_UNIT_CHARS = 400_000  # a single page/section bigger than this is truncated (pathological files)
-
-
-@dataclass
-class Unit:
-    kind: str  # page | section | chapter
-    number: int  # page number (1-based) or ordinal of the section/chapter
-    title: str = ""
-    text: str = ""
-    line_start: int | None = None  # 1-based line in the source file, for text formats
 
 
 @dataclass
@@ -32,17 +27,10 @@ class Extracted:
         return sum(len(u.text) for u in self.units)
 
 
-_WS = re.compile(r"[ \t ]+")
-_BLANKS = re.compile(r"\n{3,}")
-
-
 def clean_text(text: str) -> str:
-    """Normalize whitespace without destroying paragraph breaks."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = _WS.sub(" ", text)
-    text = "\n".join(line.strip() for line in text.split("\n"))
-    text = _BLANKS.sub("\n\n", text)
-    return text.strip()[:MAX_UNIT_CHARS]
+    """Tidy extracted text (the shared `textclean`: line endings, invisible characters, spaces, blank lines, words split
+    by a hyphen at a line end, one-word-per-line exports) and cut a pathological unit."""
+    return tidy(text, max_chars=MAX_UNIT_CHARS)
 
 
 def finish(units: list[Unit]) -> list[Unit]:

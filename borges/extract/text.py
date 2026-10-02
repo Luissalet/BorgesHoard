@@ -7,6 +7,7 @@ import io
 import re
 from pathlib import Path
 
+from ..hoard_link.docs.textclean import decode_text
 from .base import Extracted, Unit, finish
 
 MD_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -14,13 +15,8 @@ CSV_MAX_ROWS = 200
 
 
 def read_text(path: Path) -> str:
-    raw = path.read_bytes()
-    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="replace")
+    """The text of a file: the shared decoder (a BOM decides UTF-8/16/32, else UTF-8, then Windows-1252, then Latin-1)."""
+    return decode_text(path.read_bytes())
 
 
 def _first_heading_title(units: list[Unit]) -> str:

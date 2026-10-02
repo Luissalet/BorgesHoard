@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .db import Database
+from .hoard_link.docs.citations import cite
 
 KIND_LABEL = {"pdf": "PDF", "docx": "Word", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código",
               "chat": "Chat", "link": "Enlace"}
@@ -32,29 +33,20 @@ def document_json(row) -> dict:
 
 
 def citation(doc: dict, page: int | None, section: str, line: int | None = None) -> str:
-    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N] · [enlace «Título» · sitio]."""
+    """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N] ·
+    [enlace «Título» · sitio]. The wording is the shared `hoard_link.docs.citations.cite`; this only picks the kind."""
     kind = doc["kind"]
-    if kind == "link":
+    if kind in ("link", "chat"):
         meta = _meta(doc.get("meta"))
         title = meta.get("title") or doc["title"]
-        site = meta.get("site") or ""
-        return f"[enlace «{title}»" + (f" · {site}]" if site else "]")
-    if kind == "chat":
-        meta = _meta(doc.get("meta"))
-        title = meta.get("title") or doc["title"]
-        date = meta.get("date") or ""
-        parts = [p for p in (date, section) if p]
-        return f"[chat «{title}»" + (f" · {' · '.join(parts)}]" if parts else "]")
+        if kind == "link":
+            return cite("link", title, site=meta.get("site") or "")
+        return cite("chat", title, date=meta.get("date") or "", section=section)
     if kind == "pdf":
-        return f"«{doc['title']}», p. {page}" if page else f"«{doc['title']}»"
+        return cite("page", doc["title"], page=page)
     if kind == "epub":
-        return f"«{doc['title']}», cap. {section}" if section else f"«{doc['title']}»"
-    name = doc["filename"]
-    if section:
-        return f"{name} § {section}"
-    if line:
-        return f"{name}, l. {line}"
-    return name
+        return cite("book", doc["title"], section=section)
+    return cite("doc", doc["filename"], section=section, line=line)
 
 
 class Queries:

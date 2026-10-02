@@ -3,21 +3,23 @@
 import numpy as np
 import pytest
 
-from borges.search import Search, fts_query, highlight, query_terms
+from borges.hoard_link.docs.textsearch import highlight, query_terms
+from borges.search import Search, match_ladder
 
 
 def test_fts_query_drops_stopwords_and_stems():
-    and_q, or_q = fts_query("¿dónde leí sobre las hojas de los árboles?")
-    assert and_q == '"leí"* AND "hoja"* AND "árbol"*'
-    assert or_q.count(" OR ") == 2
-    assert fts_query("de la") == ('"de" AND "la"', '"de" OR "la"')  # all stopwords: keep them
-    assert fts_query("   ") == ("", "")
+    and_q, or_q = match_ladder("¿dónde leí sobre las hojas de los árboles?")
+    assert and_q == '"hoja"* AND "árbol"*'  # "leí" is a stopword (the shared list matches folded: before it only removed unaccented ones)
+    assert or_q == '"hoja"* OR "árbol"*'
+    assert match_ladder("de la") == ['"de" AND "la"', '"de" OR "la"']  # all stopwords: keep them
+    assert match_ladder("   ") == []
+    assert match_ladder("uno") == ['"uno"*']  # one word: the AND and OR forms are the same, tried once
 
 
 def test_short_terms_match_whole_words_only():
-    assert fts_query("co")[0] == '"co"'  # no prefix expansion under 3 characters
-    assert fts_query("con")[0] == '"con"*'
-    assert fts_query("commits co")[0] == '"commit"* AND "co"'
+    assert match_ladder("co")[0] == '"co"'  # no prefix expansion under 3 characters
+    assert match_ladder("con")[0] == '"con"*'
+    assert match_ladder("commits co")[0] == '"commit"* AND "co"'
 
 
 def test_short_terms_do_not_prefix_match_in_the_index(indexed):

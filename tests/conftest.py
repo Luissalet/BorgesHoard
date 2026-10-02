@@ -23,6 +23,21 @@ def make_config(tmp_path: Path, **overrides) -> Config:
     return Config(**base)
 
 
+class _NoFamilyDocs:
+    """The tests never reach a real hub: no OCR service is running unless a test installs a fake one."""
+
+    @staticmethod
+    def available(timeout: float = 1.0) -> bool:
+        return False
+
+
+@pytest.fixture(autouse=True)
+def no_family_ocr(monkeypatch):
+    from borges.extract import pdf
+
+    monkeypatch.setattr(pdf, "fam_docs", _NoFamilyDocs)
+
+
 @pytest.fixture
 def library(tmp_path) -> Path:
     folder = tmp_path / "library"
