@@ -9,7 +9,7 @@ Part of the Hoard family (see `faustus-plugin.json`).
 ## What it does
 
 - **Collections** = folders you choose, with include/exclude globs, enable/disable, optional folder watching (reindex on change) and optional code files.
-- **Extraction** per format: PDF page by page (page numbers kept; scanned PDFs without a text layer are listed and flagged `needs_ocr`, not OCR'd in v1), DOCX headings → sections (tables appended as rows), Markdown headings → sections with line numbers, TXT, EPUB chapter by chapter, HTML by h1–h3 (scripts/styles dropped), CSV first 200 rows.
+- **Extraction** per format: PDF page by page (page numbers kept; scanned pages are read by the family's OCR service (Kafka's Hoard through the hub, `fam_docs.extract(ocr="auto")` from Hoard Link; only the pages without a text layer, `BORGES_OCR=0` turns it off) and, when that service is not running, the PDF is listed and flagged `needs_ocr` and is read at a later scan once the service is up), DOCX headings → sections (tables appended as rows, list items keep their dash), Markdown headings → sections with line numbers, TXT (encoding by BOM, UTF-8, Windows-1252, Latin-1), EPUB chapter by chapter (the table-of-contents page is not a chapter), HTML by h1–h3 (scripts/styles/nav dropped), CSV first 200 rows. DOCX, HTML and text readers, text cleaning (words split by a hyphen at a line end are rejoined, one-word-per-line exports unstacked), chunking, citations, search words and vector ranking are the shared Hoard Link commons (`borges/hoard_link/`), not code of this app.
 - **Chunking** with overlap (~900 chars, 150 overlap) that never crosses a page/section boundary; every chunk remembers page, section title and line. A page/section shorter than ~200 characters (a "## Pendiente" stub, a title page) is merged into the following one (or the previous one at the end) keeping the larger part's metadata, and no chunk under 120 characters is emitted unless it is the whole document. Chunking rules carry an `index_version` per document: when the rules change, the next reindex re-chunks only the stale documents, the worker queues it at startup, and status/UI say "reindexación necesaria: N documentos" until done.
 - **Incremental indexing**: size+mtime check, then SHA-256; only changed files are re-extracted; deleted files are purged. Runs in a background worker with a queue and live progress (files done/total, current file, per-file errors).
 - **Hybrid search**: SQLite FTS5 BM25 (diacritics-insensitive, stopwords dropped, terms of 3+ letters match as a prefix of their light Spanish stem, shorter terms whole-word only) ∪ dense cosine over float32 vectors in SQLite → Reciprocal Rank Fusion. Modes `hybrid | bm25 | dense`. Queries under 3 characters are refused (400). One hit per page/section; further hits from the same section come back in `also` (UI: "ver más"). Responses carry `took_ms`. A reranker hook is left in `Search(reranker=...)`.
@@ -53,6 +53,8 @@ Open http://127.0.0.1:5184, go to **Colecciones** and add a folder. The first st
 | `BORGES_EMBED` | `auto` | `auto` (fastembed), `fake` (tests), `none` (BM25 only). |
 | `BORGES_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Any fastembed text model. |
 | `BORGES_EMBED_PROVIDERS` | | e.g. `CUDAExecutionProvider` with `fastembed-gpu`. |
+| `BORGES_OCR` | `1` | `0` never sends scanned PDFs to the family OCR service. |
+| `BORGES_OCR_LANG` | `es` | Language asked of the OCR engine. |
 | `BORGES_WATCH` | `1` | `0` disables folder watching. |
 | `BORGES_AUTOSTART` | `1` | `0` skips model preload and the initial reindex at startup. |
 
@@ -120,7 +122,9 @@ the index at the next sync. Each sync with changes emits `borges.source.synced` 
 
 ## API
 
-All JSON; errors are `{ "error": "..." }`.
+All JSON; errors are `{ "error": "..." }` (plus a machine-readable `code`, and `issues` for bad input). Tool answers are capped at about 20 KB, except the family embedding tools. The request guard, the error envelope, the PWA files, the single-page-app server (`index.html` is never cached), the MCP bridge, the agent routes and the database class are the shared Hoard Link commons, not code of this app. A second `python -m borges` reports the running instance and exits without touching the token or the database; the token in `data/mcp-token` is created once and stays.
+
+Adding a folder (`POST /api/collections`, `library_add_collection`) accepts a pasted path with its quotes and refuses a drive root, the user profile folder, system folders, configuration or secret folders (`.ssh`, `AppData`, ...) and Borges's own data folder.
 
 - `GET /api/health` → `{ service: "borges-hoard", version, dataDirConfigured }`
 - `GET /api/status` → model state, counts (documents, chunks, errors, needs_ocr), per-collection counts, worker queue and progress, disk
@@ -148,6 +152,10 @@ All JSON; errors are `{ "error": "..." }`.
 | `library_reindex` | Queue a non-destructive reindex of a collection (write). |
 | `library_add_collection` | Add a folder that must exist; idempotent by path (write). |
 | `chats_recent` | Most recently indexed Faustus conversations — title, date, project (limit?, project?). |
+| `embed_texts` | Family service: 1 to 512 texts (texts, kind? = `document`\|`query`, normalize?) → `{model, dim, vectors, normalized}`; waits up to 100 s for a model that is loading, then 503 `embedder_loading`; 400 `embeddings_disabled` / `too_many_texts`. Not capped. |
+| `embed_status` | Family service: `{backend, model, dim, state: disabled\|loading\|downloading\|ready\|error, error, load_seconds, ready}`. |
+
+Borges is the owner of the family's text embeddings: the other apps reach `embed_texts` / `embed_status` through the hub (`fam_embed` in Hoard Link), so the whole family uses one multilingual model and one vector space (`model` and `dim` say which).
 
 The instructions shipped with the tools tell the assistant to answer only from retrieved text, to read the full passage with `library_read` before quoting, to always cite, and to say so when nothing relevant is found — and, for questions about past conversations or decisions ("what did we decide about X?"), to search with `source="faustus"` (or call `chats_recent`) and quote the `[chat «Title» · date · turno N]` citation.
 
@@ -158,11 +166,11 @@ venv\Scripts\python -m pytest -q          # fake embedder, no network
 venv\Scripts\python -m pytest -m model    # downloads/loads the real model, checks a Spanish query
 ```
 
-Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), the links source against a fake Links Hoard (paging, fingerprints, unfetched pages, filters, REST), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
+Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), the scanned-PDF OCR routing against a fake family service, the folder policy, the family embedding tools, the plumbing, chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), the links source against a fake Links Hoard (paging, fingerprints, unfetched pages, filters, REST), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
 
 ## Limits (v1)
 
-- No OCR: scanned PDFs are listed with `needs_ocr` and cannot be searched.
+- OCR is Kafka's: without the hub and Kafka's Hoard running, scanned PDFs are listed with `needs_ocr` and cannot be searched until a later scan finds the service.
 - DOCX tables are flattened to `cell | cell` rows; images and footnotes are ignored.
 - Dense search keeps all vectors in memory (384 floats per chunk: ~150 MB per 100k chunks) and rebuilds the matrix after indexing changes.
 - The reranker stage is a hook, not an implementation.

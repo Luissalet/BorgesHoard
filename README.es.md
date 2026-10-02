@@ -7,7 +7,7 @@ Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo m
 ## Qué hace
 
 - **Colecciones** = carpetas que eliges, con globs de inclusión/exclusión, activar/desactivar, vigilancia opcional de cambios (reindexa sola) y archivos de código opcionales.
-- **Extracción** por formato: PDF página a página (se conserva el número; los PDF escaneados sin capa de texto se listan y se marcan «necesita OCR», sin OCR en esta versión), DOCX con títulos → secciones (las tablas se añaden como filas), Markdown con títulos → secciones y números de línea, TXT, EPUB capítulo a capítulo, HTML por h1–h3, CSV (200 primeras filas).
+- **Extracción** por formato: PDF página a página (se conserva el número; las páginas escaneadas las lee el servicio de OCR de la familia (Kafka's Hoard a través del hub, `fam_docs.extract(ocr="auto")` de Hoard Link; solo las páginas sin capa de texto, `BORGES_OCR=0` lo apaga) y, si ese servicio no está en marcha, el PDF se lista como «necesita OCR» y se lee en un escaneo posterior cuando el servicio esté), DOCX con títulos → secciones (las tablas se añaden como filas, las listas conservan el guion), Markdown con títulos → secciones y números de línea, TXT (codificación por BOM, UTF-8, Windows-1252, Latin-1), EPUB capítulo a capítulo (la página del índice no es un capítulo), HTML por h1–h3, CSV (200 primeras filas). Los lectores de DOCX, HTML y texto, la limpieza del texto (las palabras partidas con guion a final de línea se reúnen, las exportaciones de una palabra por línea se vuelven a juntar), el troceado, las citas, las palabras de búsqueda y el orden por vectores son el código común de Hoard Link (`borges/hoard_link/`), no de esta app.
 - **Troceado** con solapamiento (~900 caracteres, 150 de solape) que nunca cruza una página o sección; cada pasaje recuerda página, sección y línea. Las secciones o páginas de menos de ~200 caracteres (un «## Pendiente» de dos líneas, una portada) se funden con la siguiente conservando los datos de la parte grande, y nunca se emite un pasaje de menos de 120 caracteres salvo que sea el documento entero. Cada documento guarda la versión de las reglas de troceado: si cambian, la siguiente reindexación (que el indexador encola sola al arrancar) vuelve a trocear solo los documentos antiguos y la interfaz avisa «reindexación necesaria: N documentos» hasta terminar.
 - **Indexación incremental**: tamaño+fecha y después SHA-256; solo se vuelve a leer lo que cambia; lo borrado se purga. Corre en segundo plano con cola y progreso (archivos hechos/total, archivo actual, errores por archivo).
 - **Búsqueda híbrida**: BM25 de SQLite FTS5 (sin distinguir tildes, sin palabras vacías; los términos de 3 o más letras se expanden como prefijo, los más cortos solo palabra entera) ∪ coseno sobre vectores float32 guardados en SQLite → fusión RRF. Modos «Híbrida», «Palabras» y «Significado». Se necesitan al menos 3 caracteres; un resultado por página o sección, con «ver más» para los demás; cada respuesta indica los milisegundos empleados.
@@ -50,6 +50,8 @@ Abre http://127.0.0.1:5184, entra en **Colecciones** y añade una carpeta. La pr
 | `BORGES_MODELS_DIR` | `<data>/models` | Dónde se guarda el modelo. |
 | `BORGES_EMBED` | `auto` | `auto`, `fake` (pruebas) o `none` (solo palabras). |
 | `BORGES_MODEL` | MiniLM multilingüe | Cualquier modelo de texto de fastembed. |
+| `BORGES_OCR` | `1` | `0` no envía nunca los PDF escaneados al servicio de OCR de la familia. |
+| `BORGES_OCR_LANG` | `es` | Idioma que se pide al motor de OCR. |
 | `BORGES_WATCH` | `1` | `0` desactiva la vigilancia de carpetas. |
 | `BORGES_AUTOSTART` | `1` | `0` no precarga el modelo ni reindexa al arrancar. |
 
@@ -95,7 +97,9 @@ Hoard sale del índice en la siguiente sincronización. Cada sincronización con
 
 `mcp_server.py` es un puente stdio: pide la lista de herramientas a la aplicación en marcha y reenvía cada llamada a `POST /api/agent/call` con el token de `data/mcp-token`. Nunca abre la base de datos. Faustus detecta la aplicación por `/api/health` y rellena la conexión con `faustus-plugin.json`.
 
-Herramientas: `library_search` (con `source='folder'|'faustus'`, `since`, `until`), `library_read`, `library_document`, `library_documents`, `library_collections`, `library_status`, `library_similar`, `library_reindex`, `library_add_collection` y `chats_recent` (últimos chats de Faustus indexados). Las instrucciones que acompañan a las herramientas obligan al asistente a responder solo con texto recuperado, a leer el pasaje completo antes de citar, a citar siempre (documento y página/sección, o el chat y la fecha) y a decir claramente cuando no encuentra nada; para preguntas sobre conversaciones o decisiones pasadas («¿qué decidimos sobre X?») le dicen que busque con `source="faustus"` o llame a `chats_recent`.
+Herramientas: `library_search` (con `source='folder'|'faustus'`, `since`, `until`), `library_read`, `library_document`, `library_documents`, `library_collections`, `library_status`, `library_similar`, `library_reindex`, `library_add_collection`, `chats_recent` (últimos chats de Faustus indexados), y los dos del servicio de embeddings de la familia: `embed_texts` (de 1 a 512 textos → vectores del modelo multilingüe, sin recorte de tamaño) y `embed_status` (estado del modelo). Borges es el dueño de los embeddings de la familia: el resto de apps llaman a esas dos herramientas a través del hub (`fam_embed` en Hoard Link), de modo que toda la familia usa un solo modelo y un solo espacio de vectores.
+
+La protección de peticiones, el formato de errores (con `code`), los ficheros PWA, el servidor de la interfaz (`index.html` nunca se guarda en caché), el puente MCP, las rutas del agente y la clase de base de datos son el código común de Hoard Link. Una segunda ejecución de `python -m borges` avisa de que ya hay una en marcha y termina sin tocar el token ni la base de datos; el token de `data/mcp-token` se crea una vez y se conserva. Al añadir una carpeta se acepta la ruta pegada con sus comillas y se rechaza la raíz de una unidad, la carpeta de usuario, las del sistema, las de configuración o secretos y la propia carpeta de datos. Las instrucciones que acompañan a las herramientas obligan al asistente a responder solo con texto recuperado, a leer el pasaje completo antes de citar, a citar siempre (documento y página/sección, o el chat y la fecha) y a decir claramente cuando no encuentra nada; para preguntas sobre conversaciones o decisiones pasadas («¿qué decidimos sobre X?») le dicen que busque con `source="faustus"` o llame a `chats_recent`.
 
 ## Pruebas
 
@@ -108,7 +112,7 @@ Incluye la fuente Faustus contra una aplicación ASGI de Faustus simulada (login
 
 ## Límites (v1)
 
-- Sin OCR: los PDF escaneados se listan con «necesita OCR» pero no se pueden buscar.
+- El OCR es el de Kafka: sin el hub y Kafka's Hoard en marcha, los PDF escaneados se listan con «necesita OCR» y no se pueden buscar hasta que un escaneo posterior encuentre el servicio.
 - Las tablas de DOCX se aplanan como filas `celda | celda`; imágenes y notas al pie se ignoran.
 - Los vectores se mantienen en memoria (~150 MB por cada 100 000 pasajes).
 - La fase de reordenación (reranker) es un gancho, no una implementación.
