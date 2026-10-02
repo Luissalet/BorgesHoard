@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import secrets
 import shutil
 import threading
 import time
@@ -12,6 +11,7 @@ from . import __version__
 from .config import Config
 from .db import Database
 from .embedder import make_embedder
+from .hoard_link.tokens import read_or_create_token
 from .faustus_source import FaustusIndexer, FaustusScheduler
 from .indexer import Indexer
 from .links_source import LinksIndexer
@@ -24,23 +24,12 @@ from .worker import IndexWorker
 log = logging.getLogger("borges")
 
 
-def write_token(config: Config) -> str:
-    config.data_dir.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_hex(32)
-    config.token_path.write_text(token, encoding="utf-8")
-    try:
-        config.token_path.chmod(0o600)
-    except OSError:
-        pass
-    return token
-
-
 class Services:
     def __init__(self, config: Config):
         self.config = config
         self.started_at = time.time()
         config.data_dir.mkdir(parents=True, exist_ok=True)
-        self.token = write_token(config)
+        self.token = read_or_create_token(config.token_path)  # stable across restarts: a second instance must not rotate it
         self.db = Database(config.db_path)
         self.collections = CollectionStore(self.db)
         self.documents = DocumentStore(self.db)

@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from borges.port import free_port
+from borges.hoard_link.net import free_port
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -63,7 +63,7 @@ def test_subprocess_http_and_mcp_bridge(app_process, library):
     assert [t["name"] for t in tools][:2] == ["library_search", "library_read"]
 
     token = (data_dir / "mcp-token").read_text().strip()
-    assert len(token) == 64
+    assert len(token) >= 32
     assert httpx.post(f"{url}/api/agent/call", json={"name": "library_status"}).status_code == 401
     auth = {"Authorization": f"Bearer {token}"}
     added = httpx.post(f"{url}/api/agent/call", json={"name": "library_add_collection", "arguments": {"path": str(library), "name": "E2E"}}, headers=auth).json()

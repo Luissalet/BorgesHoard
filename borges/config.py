@@ -6,15 +6,12 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .guard import parse_allowed_hosts
+from .hoard_link.appconfig import env_flag, env_int, env_str
+from .hoard_link.guard import parse_allowed_hosts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PORT = 5184
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
-
-def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default).strip()
 
 
 @dataclass
@@ -47,26 +44,22 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
-        raw_dir = _env("BORGES_DATA_DIR")
-        port_raw = _env("BORGES_PORT") or _env("PORT") or str(DEFAULT_PORT)
-        try:
-            port = int(port_raw)
-        except ValueError:
+        raw_dir = env_str("BORGES_DATA_DIR")
+        port = env_int("BORGES_PORT", "PORT")
+        if port is None or not 1 <= port <= 65535:
             port = DEFAULT_PORT
-        if not 1 <= port <= 65535:
-            port = DEFAULT_PORT
-        models_raw = _env("BORGES_MODELS_DIR")
-        providers = tuple(p.strip() for p in _env("BORGES_EMBED_PROVIDERS").split(",") if p.strip())
+        models_raw = env_str("BORGES_MODELS_DIR")
+        providers = tuple(p.strip() for p in (env_str("BORGES_EMBED_PROVIDERS") or "").split(",") if p.strip())
         return cls(
             data_dir=Path(raw_dir).expanduser() if raw_dir else REPO_ROOT / "data",
             port=port,
-            port_strict=_env("PORT_STRICT") == "1",
-            embed_backend=_env("BORGES_EMBED", "auto") or "auto",
-            model_name=_env("BORGES_MODEL", DEFAULT_MODEL) or DEFAULT_MODEL,
+            port_strict=env_flag("PORT_STRICT"),
+            embed_backend=env_str("BORGES_EMBED", "auto") or "auto",
+            model_name=env_str("BORGES_MODEL", DEFAULT_MODEL) or DEFAULT_MODEL,
             models_dir=Path(models_raw).expanduser() if models_raw else None,
             embed_providers=providers,
-            watch=_env("BORGES_WATCH", "1") != "0",
-            autostart=_env("BORGES_AUTOSTART", "1") != "0",
-            allowed_hosts=parse_allowed_hosts(_env("BORGES_ALLOWED_HOSTS")),
+            watch=env_flag("BORGES_WATCH", True),
+            autostart=env_flag("BORGES_AUTOSTART", True),
+            allowed_hosts=parse_allowed_hosts(env_str("BORGES_ALLOWED_HOSTS")),
             data_dir_configured=bool(raw_dir),
         )

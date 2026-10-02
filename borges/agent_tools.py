@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .hoard_link.agentkit import AppError, Empty, Tool, ann, call_tool as run_tool, tool_catalog as catalog_of
 from .queries import citation
 from .services import Services
 
@@ -19,10 +19,6 @@ A document with needs_ocr is a scanned PDF without text: it is listed but cannot
 library_add_collection and library_reindex change the index; call them only when the user asks. Indexing runs in the background: library_status shows the queue.
 The library can also hold the user's own past Faustus conversations (a `faustus` source), indexed as one document per chat. For questions about past conversations or decisions ("¿qué dijimos?", "¿qué decidimos?", "¿en qué quedamos?", "what did we decide", "what did we say about"), call library_search with source="faustus" (optionally since/until for a date range), or chats_recent to browse recent chats, then quote the `citation` field verbatim — it already reads like `[chat «Title» · date · turno N]`.
 A `links` source indexes the user's saved links from Links Hoard (one document per link, the page text as Links Hoard extracted it). For "what did I save about", "aquel artículo que guardé", "dónde leí", call library_search with source="links"; the citation reads `[enlace «Title» · site]` and the hit carries the `url`."""
-
-
-class Empty(BaseModel):
-    pass
 
 
 class SearchArgs(BaseModel):
@@ -74,15 +70,6 @@ class AddCollectionArgs(BaseModel):
     include: list[str] = Field(default_factory=list, max_length=50, description="Include globs, e.g. ['**/*.pdf']; empty means every supported file.")
     exclude: list[str] | None = Field(None, max_length=50, description="Exclude globs; omit for sensible defaults.")
     watch: bool = Field(False, description="Reindex automatically when files change.")
-
-
-@dataclass(frozen=True)
-class Tool:
-    name: str
-    description: str
-    input_model: type[BaseModel]
-    annotations: dict[str, bool]
-    run: Callable[[Services, Any], Any]
 
 
 def _hit(h: dict) -> dict:
@@ -182,36 +169,32 @@ def run_add_collection(services: Services, args: AddCollectionArgs) -> dict:
     return {"ok": True, "collection": collection.to_dict(), "note": "Indexing has started in the background; library_status shows progress."}
 
 
-def _ann(read_only: bool, destructive: bool = False, idempotent: bool | None = None) -> dict[str, bool]:
-    return {"readOnlyHint": read_only, "destructiveHint": destructive, "idempotentHint": read_only if idempotent is None else idempotent, "openWorldHint": False}
-
-
 TOOLS: list[Tool] = [
-    Tool("library_search", "Search your documents, past chats and saved links; exact citation, snippet. Busca documentos, chats, enlaces.\nHybrid BM25 + multilingual embeddings. Filter source='faustus' for chats, 'links' for saved links, since/until for a date range; citations read «Title», p. 12 / file.md § Section / [chat «Title» · date · turno N] / [enlace «Title» · site].\nSinónimos: buscar, dónde leí, dónde escribí, qué dijimos, qué decidimos, apuntes, mis documentos, mis chats, conversaciones, cita, página, biblioteca, libro, tesis, notas, artículo.", SearchArgs, _ann(True), run_search),
-    Tool("library_read", "Read the exact text of a page or section before quoting it. Keywords: leer página, cita textual, qué dice.\nRead the exact text of one page or section of a document (by page, section ordinal or a chunk_id from library_search), with prev/next pointers. Use it before quoting so the quote is verbatim.\nSinónimos: leer, página, sección, capítulo, pasaje, texto completo, cita textual, qué dice, manuscrito, libro, apuntes.", ReadArgs, _ann(True), run_read),
-    Tool("library_document", "Metadata and outline (pages or sections with titles) of one document.\nSinónimos: documento, índice, esquema, capítulos, páginas, libro, tesis, ficha.", DocumentArgs, _ann(True), run_document),
-    Tool("library_documents", "List indexed documents, optionally filtered by collection or by title/file name. Paginated with next_cursor.\nSinónimos: mis documentos, lista, biblioteca, archivos, libros, PDF, qué tengo, apuntes.", DocumentsArgs, _ann(True), run_documents),
-    Tool("library_collections", "The folders (collections) that make up the library, with document and chunk counts.\nSinónimos: colecciones, carpetas, biblioteca, dónde están mis documentos.", Empty, _ann(True), run_collections),
-    Tool("library_status", "Index health: embedding model state, counts, what is being indexed and the queue.\nSinónimos: estado, está indexando, modelo, cuántos documentos, progreso, biblioteca.", Empty, _ann(True), run_status),
-    Tool("library_similar", "Passages similar in meaning to a chunk, across the library. Keywords: parecido, dónde más, relacionado.\nPassages similar in meaning to a given chunk (from library_search), across the whole library. Good for 'where else did I write about this'.\nSinónimos: parecido, similar, relacionado, dónde más, otros pasajes, misma idea.", SimilarArgs, _ann(True), run_similar),
-    Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, _ann(False, False, True), run_reindex),
-    Tool("library_add_collection", "Add a folder to the library and index it (only when asked). Keywords: añadir carpeta, indexar, biblioteca.\nAdd a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, _ann(False, False, True), run_add_collection),
-    Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, _ann(True), run_chats_recent),
+    Tool("library_search", "Search your documents, past chats and saved links; exact citation, snippet. Busca documentos, chats, enlaces.\nHybrid BM25 + multilingual embeddings. Filter source='faustus' for chats, 'links' for saved links, since/until for a date range; citations read «Title», p. 12 / file.md § Section / [chat «Title» · date · turno N] / [enlace «Title» · site].\nSinónimos: buscar, dónde leí, dónde escribí, qué dijimos, qué decidimos, apuntes, mis documentos, mis chats, conversaciones, cita, página, biblioteca, libro, tesis, notas, artículo.", SearchArgs, ann(True), run_search),
+    Tool("library_read", "Read the exact text of a page or section before quoting it. Keywords: leer página, cita textual, qué dice.\nRead the exact text of one page or section of a document (by page, section ordinal or a chunk_id from library_search), with prev/next pointers. Use it before quoting so the quote is verbatim.\nSinónimos: leer, página, sección, capítulo, pasaje, texto completo, cita textual, qué dice, manuscrito, libro, apuntes.", ReadArgs, ann(True), run_read),
+    Tool("library_document", "Metadata and outline (pages or sections with titles) of one document.\nSinónimos: documento, índice, esquema, capítulos, páginas, libro, tesis, ficha.", DocumentArgs, ann(True), run_document),
+    Tool("library_documents", "List indexed documents, optionally filtered by collection or by title/file name. Paginated with next_cursor.\nSinónimos: mis documentos, lista, biblioteca, archivos, libros, PDF, qué tengo, apuntes.", DocumentsArgs, ann(True), run_documents),
+    Tool("library_collections", "The folders (collections) that make up the library, with document and chunk counts.\nSinónimos: colecciones, carpetas, biblioteca, dónde están mis documentos.", Empty, ann(True), run_collections),
+    Tool("library_status", "Index health: embedding model state, counts, what is being indexed and the queue.\nSinónimos: estado, está indexando, modelo, cuántos documentos, progreso, biblioteca.", Empty, ann(True), run_status),
+    Tool("library_similar", "Passages similar in meaning to a chunk, across the library. Keywords: parecido, dónde más, relacionado.\nPassages similar in meaning to a given chunk (from library_search), across the whole library. Good for 'where else did I write about this'.\nSinónimos: parecido, similar, relacionado, dónde más, otros pasajes, misma idea.", SimilarArgs, ann(True), run_similar),
+    Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, ann(False, False, True), run_reindex),
+    Tool("library_add_collection", "Add a folder to the library and index it (only when asked). Keywords: añadir carpeta, indexar, biblioteca.\nAdd a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, ann(False, False, True), run_add_collection),
+    Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, ann(True), run_chats_recent),
 ]
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
 def tool_catalog() -> list[dict]:
-    return [
-        {"name": t.name, "description": t.description, "annotations": t.annotations, "inputSchema": t.input_model.model_json_schema(by_alias=True)}
-        for t in TOOLS
-    ]
+    return catalog_of(TOOLS)
 
 
-def call_tool(services: Services, name: str, arguments: dict | None) -> Any:
-    tool = TOOLS_BY_NAME.get(name)
-    if tool is None:
-        raise KeyError(f"Unknown tool: {name}")
-    args = tool.input_model.model_validate(arguments or {})
-    return tool.run(services, args)
+def call_tool(services: Services, name: str, arguments: dict | None, *, cap: bool = True) -> Any:
+    """Run one tool through the shared agent kit (argument validation, result cap). An expected "not found"
+    (`LookupError`) keeps the 404 it always had; a bare `ValueError` is a 400 `invalid`."""
+    try:
+        return run_tool(TOOLS_BY_NAME, services, name, arguments, cap=cap)
+    except LookupError as error:
+        if isinstance(error, KeyError):  # an unknown tool: the router answers 404 unknown_tool itself
+            raise
+        raise AppError("not_found", str(error), status=404) from error
