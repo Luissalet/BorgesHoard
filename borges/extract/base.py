@@ -15,7 +15,7 @@ MAX_UNIT_CHARS = 400_000  # a single page/section bigger than this is truncated 
 @dataclass
 class Extracted:
     title: str
-    kind: str  # pdf | docx | md | txt | epub | html | csv | code
+    kind: str  # pdf | docx | pptx | md | txt | epub | html | csv | code
     units: list[Unit] = field(default_factory=list)
     needs_ocr: bool = False
     pages: int = 0
@@ -34,7 +34,7 @@ def clean_text(text: str) -> str:
 
 
 def finish(units: list[Unit]) -> list[Unit]:
-    """Drop empty units and renumber sections/chapters consecutively (pages keep their number)."""
+    """Drop empty units; sections/chapters renumber, physical pages/slides keep their number."""
     out: list[Unit] = []
     for unit in units:
         unit.text = clean_text(unit.text)
@@ -42,7 +42,7 @@ def finish(units: list[Unit]) -> list[Unit]:
             out.append(unit)
     ordinal = 0
     for unit in out:
-        if unit.kind != "page":
+        if unit.kind not in ("page", "slide"):
             ordinal += 1
             unit.number = ordinal
     return out

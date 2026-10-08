@@ -74,7 +74,7 @@ def test_citations_read_as_they_always_did():
 
 def test_chunk_boundaries_are_the_ones_the_library_was_indexed_with():
     """Pinned from the app's own chunker before it moved to the commons: a change here would re-chunk every library."""
-    assert INDEX_VERSION == 3
+    assert INDEX_VERSION == 4
     text = " ".join(f"Frase número {i} sobre la aldea imaginaria de Valdeniebla y sus bibliotecas infinitas." for i in range(30))
     units = [Unit(kind="page", number=1, text=text), Unit(kind="page", number=2, text="Corta."), Unit(kind="section", number=3, title="Fin", text="Z " * 300, line_start=5)]
     chunks = chunk_units(merge_small_units(units))

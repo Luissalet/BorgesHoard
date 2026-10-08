@@ -41,7 +41,7 @@ export function PageHeader({ title, description, children }) {
   );
 }
 
-const KIND_GLYPH = { pdf: "PDF", docx: "DOC", md: "MD", txt: "TXT", epub: "EPUB", html: "HTML", csv: "CSV", code: "</>", chat: "CHAT", link: "LINK" };
+const KIND_GLYPH = { pdf: "PDF", docx: "DOC", pptx: "PPT", md: "MD", txt: "TXT", epub: "EPUB", html: "HTML", csv: "CSV", code: "</>", chat: "CHAT", link: "LINK" };
 
 export function TypeIcon({ kind }) {
   return (

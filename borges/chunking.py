@@ -7,6 +7,6 @@ from __future__ import annotations
 from .hoard_link.docs.chunking import (CHUNK_CHARS, CHUNK_VERSION, MIN_CHUNK_CHARS, OVERLAP_CHARS, Chunk, chunk_units,
                                        merge_small_units)
 
-INDEX_VERSION = CHUNK_VERSION  # 3: physical PDF page boundaries are kept, including short pages
+INDEX_VERSION = CHUNK_VERSION  # 4: physical PDF page and PowerPoint slide boundaries, including short units
 
 __all__ = ["CHUNK_CHARS", "OVERLAP_CHARS", "MIN_CHUNK_CHARS", "INDEX_VERSION", "Chunk", "chunk_units", "merge_small_units"]

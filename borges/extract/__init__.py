@@ -10,6 +10,7 @@ from .docx import extract_docx
 from .epub import extract_epub
 from .html import extract_html
 from .pdf import extract_pdf
+from .pptx import extract_pptx
 from .text import extract_csv, extract_markdown, extract_plain
 
 __all__ = ["Extracted", "Unit", "extract", "kind_for", "SUPPORTED", "CODE_EXTENSIONS"]
@@ -17,6 +18,7 @@ __all__ = ["Extracted", "Unit", "extract", "kind_for", "SUPPORTED", "CODE_EXTENS
 DOCUMENT_EXTENSIONS: dict[str, str] = {
     ".pdf": "pdf",
     ".docx": "docx",
+    ".pptx": "pptx",
     ".md": "md",
     ".markdown": "md",
     ".txt": "txt",
@@ -38,6 +40,7 @@ SUPPORTED = frozenset(DOCUMENT_EXTENSIONS)
 EXTRACTORS: dict[str, Callable[[Path], Extracted]] = {
     "pdf": extract_pdf,
     "docx": extract_docx,
+    "pptx": extract_pptx,
     "md": extract_markdown,
     "txt": extract_plain,
     "epub": extract_epub,

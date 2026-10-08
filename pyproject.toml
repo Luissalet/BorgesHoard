@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "borges-hoard"
 version = "0.1.0"
-description = "Local, citable index of the user's own documents (PDF, DOCX, Markdown, EPUB, HTML): hybrid search with page and section references, exposed to assistants through MCP."
+description = "Local, citable index of the user's own documents (PDF, DOCX, PPTX, Markdown, EPUB, HTML): hybrid search with page, slide and section references, exposed to assistants through MCP."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

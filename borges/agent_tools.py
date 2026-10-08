@@ -35,7 +35,7 @@ class SearchArgs(BaseModel):
 
 class ReadArgs(BaseModel):
     document_id: int = Field(..., ge=1, description="Document id from library_search or library_documents.")
-    page: int | None = Field(None, ge=1, description="Page number (PDF).")
+    page: int | None = Field(None, ge=1, description="Physical page number (PDF) or slide number (PPTX).")
     section: int | None = Field(None, ge=1, description="Section/chapter ordinal from the document outline.")
     chunk_id: int | None = Field(None, ge=1, description="A chunk id from library_search: reads the page/section that contains it.")
     max_chars: int = Field(6000, ge=200, le=40000, description="Truncate the returned text to this many characters.")
@@ -108,8 +108,8 @@ def run_read(services: Services, args: ReadArgs) -> dict:
         raise LookupError("That page or section does not exist in this document.")
     text = unit["text"]
     truncated = len(text) > args.max_chars
-    page = unit["number"] if unit["kind"] == "page" else None
-    section_label = unit["title"] or (f"{unit['number']}" if unit["kind"] != "page" else "")
+    page = unit["number"] if unit["kind"] in ("page", "slide") else None
+    section_label = unit["title"] or (f"{unit['number']}" if unit["kind"] not in ("page", "slide") else "")
     return {
         "document_id": args.document_id, "title": doc["title"], "kind": doc["kind"], "rel_path": doc["rel_path"],
         "unit": {"id": unit["id"], "kind": unit["kind"], "number": unit["number"], "title": unit["title"], "line_start": unit["line_start"], "total": unit["total"]},

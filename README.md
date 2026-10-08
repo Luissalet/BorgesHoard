@@ -1,6 +1,6 @@
 # Borges's Hoard
 
-Your personal library, indexed on your own PC. Point it at folders of documents (PDF, DOCX, Markdown, TXT, EPUB, HTML, CSV) and ask "where did I read/write about X": every answer comes with an exact citation — `«Title», p. 12` or `notes.md § Section` — and the full passage to read. An assistant reaches the same index through MCP, so it can quote your documents instead of guessing.
+Your personal library, indexed on your own PC. Point it at folders of documents (PDF, DOCX, PPTX, Markdown, TXT, EPUB, HTML, CSV) and ask "where did I read/write about X": every answer comes with an exact citation — `«Title», p. 12` or `notes.md § Section` — and the full passage to read. An assistant reaches the same index through MCP, so it can quote your documents instead of guessing.
 
 Everything stays on the machine: SQLite for text and vectors, a small multilingual embedding model that runs on the CPU, no accounts, no network beyond the one-time model download.
 
@@ -184,3 +184,9 @@ Covers extraction per format (fixtures generated with PyMuPDF, python-docx, eboo
 ## License
 
 MIT — Luissalet.
+
+## PowerPoint slides
+
+PPTX files use the existing Hoard Link reader, with no extra dependency. Text boxes, tables and speaker notes are indexed per slide, in presentation order. Empty slides keep their physical position; short slides are never merged. Citations name the file and slide (`«deck.pptx», diap. 3`). `library_read` accepts that slide number through `page`, or the returned `chunk_id`. Images and charts are not OCR'd; old binary `.ppt` files are not supported. The chunk version is now 4, so the next scan rebuilds indexes made with older boundaries.
+
+The slide and relationship model follows the [PresentationML structure](https://learn.microsoft.com/en-us/office/open-xml/presentation/structure-of-a-presentationml-document).

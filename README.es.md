@@ -1,6 +1,6 @@
 # Borges's Hoard
 
-Tu biblioteca personal, indexada en tu propio ordenador. Señala carpetas con documentos (PDF, DOCX, Markdown, TXT, EPUB, HTML, CSV) y pregunta «¿dónde leí o escribí sobre X?»: cada respuesta llega con su cita exacta — `«Título», p. 12` o `apuntes.md § Sección` — y el pasaje completo para leerlo. Un asistente accede al mismo índice por MCP, así que puede citar tus documentos en vez de inventárselos.
+Tu biblioteca personal, indexada en tu propio ordenador. Señala carpetas con documentos (PDF, DOCX, PPTX, Markdown, TXT, EPUB, HTML, CSV) y pregunta «¿dónde leí o escribí sobre X?»: cada respuesta llega con su cita exacta — `«Título», p. 12` o `apuntes.md § Sección` — y el pasaje completo para leerlo. Un asistente accede al mismo índice por MCP, así que puede citar tus documentos en vez de inventárselos.
 
 Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo multilingüe de embeddings que corre en la CPU, sin cuentas y sin red salvo la descarga única del modelo.
 
@@ -122,3 +122,7 @@ Incluye la fuente Faustus contra una aplicación ASGI de Faustus simulada (login
 ## Licencia
 
 MIT — Luissalet.
+
+## Diapositivas de PowerPoint
+
+Los archivos PPTX se leen con el lector común de Hoard Link, sin dependencias nuevas: cuadros de texto, tablas y notas de orador, separados por diapositiva y en el orden de la presentación. Las diapositivas vacías no desplazan la numeración y las cortas no se mezclan. Las citas indican archivo y diapositiva (`«presentacion.pptx», diap. 3`). `library_read` admite ese número en `page`, o el `chunk_id` de la búsqueda. No aplica OCR a imágenes ni gráficos, ni admite el formato binario `.ppt`. La versión de troceado pasa a 4; el próximo escaneo reconstruye índices con límites anteriores.

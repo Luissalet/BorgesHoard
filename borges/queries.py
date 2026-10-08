@@ -8,7 +8,7 @@ from pathlib import Path
 from .db import Database
 from .hoard_link.docs.citations import cite
 
-KIND_LABEL = {"pdf": "PDF", "docx": "Word", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código",
+KIND_LABEL = {"pdf": "PDF", "docx": "Word", "pptx": "PowerPoint", "md": "Markdown", "txt": "Texto", "epub": "EPUB", "html": "HTML", "csv": "CSV", "code": "Código",
               "chat": "Chat", "link": "Enlace"}
 
 
@@ -34,7 +34,7 @@ def document_json(row) -> dict:
 
 def citation(doc: dict, page: int | None, section: str, line: int | None = None) -> str:
     """Human citation: «Título», p. 12 · archivo.md § Sección · «Libro», cap. 3 · [chat «Título» · fecha · turno N] ·
-    [enlace «Título» · sitio]. The wording is the shared `hoard_link.docs.citations.cite`; this only picks the kind."""
+    [enlace «Título» · sitio]. Standard kinds use the shared formatter; PPTX names the file and physical slide."""
     kind = doc["kind"]
     if kind in ("link", "chat"):
         meta = _meta(doc.get("meta"))
@@ -44,6 +44,8 @@ def citation(doc: dict, page: int | None, section: str, line: int | None = None)
         return cite("chat", title, date=meta.get("date") or "", section=section)
     if kind == "pdf":
         return cite("page", doc["title"], page=page)
+    if kind == "pptx":
+        return f"«{doc['filename']}», diap. {page}" + (f" · {section}" if section else "")
     if kind == "epub":
         return cite("book", doc["title"], section=section)
     return cite("doc", doc["filename"], section=section, line=line)
@@ -106,7 +108,7 @@ class Queries:
             if unit_id is not None:
                 row = c.execute("SELECT * FROM units WHERE id = ? AND document_id = ?", (unit_id, document_id)).fetchone()
             elif page is not None:
-                row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind = 'page' AND number = ?", (document_id, page)).fetchone()
+                row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind IN ('page', 'slide') AND number = ?", (document_id, page)).fetchone()
             elif section is not None:
                 row = c.execute("SELECT * FROM units WHERE document_id = ? AND kind != 'page' AND number = ?", (document_id, section)).fetchone()
             else:
