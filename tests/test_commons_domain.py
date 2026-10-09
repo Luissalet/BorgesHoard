@@ -152,17 +152,19 @@ def test_extracted_text_joins_words_split_at_a_line_end(tmp_path):
 class FakeDocs:
     """Stands for `hoard_link.fam_docs` (Kafka's Hoard through the hub)."""
 
-    def __init__(self, up=True, pages=None, ok=True):
-        self.up, self.pages, self.ok, self.calls = up, pages or {}, ok, []
+    def __init__(self, up=True, pages=None, ok=True, backend="paddleocr"):
+        self.up, self.pages, self.ok, self.calls, self.backend = up, pages or {}, ok, [], backend
 
     def available(self, timeout=1.0):
         return self.up
 
-    def extract(self, path, **kw):
+    def ocr_pdf(self, path, **kw):
         self.calls.append((path, kw))
         if not self.ok:
             return {"ok": False, "error": "OCR engine missing", "kind": "tool_error", "via": "kafka"}
-        return {"ok": True, "via": "kafka", "units": [{"kind": "page", "number": n, "title": "", "text": t} for n, t in self.pages.items()]}
+        wanted = {int(x) for part in str(kw.get("pages") or "").split(",") if part for x in ([part] if "-" not in part else map(str, range(int(part.split("-")[0]), int(part.split("-")[1]) + 1)))}
+        return {"ok": True, "via": "kafka", "backend": self.backend,
+                "pages": [{"page": n, "text": t} for n, t in self.pages.items() if not wanted or n in wanted]}
 
 
 def test_a_scan_is_read_through_the_family_ocr(tmp_path, monkeypatch):
@@ -172,7 +174,7 @@ def test_a_scan_is_read_through_the_family_ocr(tmp_path, monkeypatch):
     assert result.needs_ocr is False and [u.number for u in result.units] == [1, 2] and all(u.kind == "page" for u in result.units)
     assert "hoja de cada árbol" in result.units[0].text and "jardín" in result.units[1].text
     path, kw = fake.calls[0]
-    assert path.endswith("scan.pdf") and kw["ocr"] == "auto" and kw["local_fallback"] is False and kw["lang"] == "es"
+    assert path.endswith("scan.pdf") and kw["pages"] == "1-2" and kw["lang"] == "es"
 
 
 def test_a_pdf_with_text_is_never_sent_to_the_ocr_service(tmp_path, monkeypatch):

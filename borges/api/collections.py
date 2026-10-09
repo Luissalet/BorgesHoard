@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .deps import services
@@ -89,12 +89,12 @@ def delete_collection(request: Request, collection_id: int):
 
 
 @router.post("/{collection_id}/reindex")
-def reindex(request: Request, collection_id: int):
+def reindex(request: Request, collection_id: int, force_ocr: bool = Query(False, description="PDFs: send every page to OCR / vision, ignoring the text layer.")):
     svc = services(request)
     if _get_folder(svc, collection_id) is None:
         raise HTTPException(404, "Collection not found.")
     try:
-        queued = svc.reindex(collection_id)
+        queued = svc.reindex(collection_id, force_ocr=force_ocr)
     except LookupError as error:
         raise HTTPException(404, str(error)) from error
     return {"ok": True, "queued": queued, "progress": svc.worker.progress(collection_id)}

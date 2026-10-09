@@ -21,6 +21,8 @@ class Extracted:
     pages: int = 0
     outline: list[dict] = field(default_factory=list)
     outline_source: str = "none"
+    page_methods: list[dict] = field(default_factory=list)  # PDF only: how each page was read (text_layer | ocr | vision | empty)
+    ocr_forced: bool = False
 
     @property
     def chars(self) -> int:

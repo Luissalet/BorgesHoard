@@ -116,11 +116,12 @@ class Services:
                 self.watcher.sync(self.collections.list())
         return removed
 
-    def reindex(self, collection_id: int) -> bool:
+    def reindex(self, collection_id: int, force_ocr: bool = False) -> bool:
+        """`force_ocr`: every PDF page of the collection goes to OCR / vision, not just the pages without a text layer."""
         collection = self.collections.get(collection_id)
         if collection is None:
             raise LookupError("Collection not found.")
-        return self.worker.enqueue(collection_id)
+        return self.worker.enqueue(collection_id, force_ocr=force_ocr)
 
     # ---------- sources (Faustus, and any future non-folder source) ----------
     def add_faustus_source(self, name: str, config: dict, enabled: bool = True):

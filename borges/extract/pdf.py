@@ -9,11 +9,12 @@ from pathlib import Path
 
 from ..hoard_link import fam_docs
 from .base import Extracted, Unit, finish
+from .pdf_pages import alnum_chars, assess_page, page_ranges, running_lines
 
 log = logging.getLogger("borges.pdf")
 
 MIN_TEXT_PER_PAGE = 25  # average non-blank chars per page below which we assume a scan
-PDF_STRUCTURE_VERSION = 6  # recognize standalone contents headings
+PDF_STRUCTURE_VERSION = 7  # per-page extraction method report
 OCR_MAX_PAGES = 2000
 
 
@@ -27,22 +28,64 @@ def _page_chars(text: str) -> int:
     return len("".join(text.split()))
 
 
-def _ocr_thin_pages(path: Path, units: list[Unit], page_count: int) -> int:
-    """Fill the pages that have (almost) no text layer with Kafka's OCR text; returns how many pages were read. The pages that
-    already have text keep PyMuPDF's, so the page coordinates and the outline titles of the citations never change."""
-    got = fam_docs.extract(str(path), ocr="auto", max_pages=min(page_count, OCR_MAX_PAGES), local_fallback=False,
-                           lang=os.environ.get("BORGES_OCR_LANG", "").strip() or "es")
+def _ocr_pages(path: Path, pages: list[int]) -> tuple[dict[int, str], str, str]:
+    """OCR only `pages` (1-based) through the family service. Returns (text by page, backend name, note); the note is empty on
+    success and says why nothing was read otherwise (ocr_disabled | service_unavailable | failed | page_limit)."""
+    if not pages:
+        return {}, "", ""
+    if os.environ.get("BORGES_OCR", "1").strip() == "0":
+        return {}, "", "ocr_disabled"
+    if not fam_docs.available():
+        return {}, "", "service_unavailable"
+    note = ""
+    if len(pages) > OCR_MAX_PAGES:
+        pages, note = pages[:OCR_MAX_PAGES], "page_limit"
+    got = fam_docs.ocr_pdf(str(path), pages=page_ranges(pages), lang=os.environ.get("BORGES_OCR_LANG", "").strip() or "es",
+                           max_pages=len(pages))
     if not got.get("ok"):
         log.info("%s: OCR through the family service failed (%s)", path.name, got.get("error") or got.get("kind"))
-        return 0
-    read = {int(u["number"]): str(u.get("text") or "") for u in got.get("units") or [] if u.get("kind") == "page" and u.get("number")}
-    done = 0
-    for unit in units:
+        return {}, "", "failed"
+    read: dict[int, str] = {}
+    for item in got.get("pages") or []:
+        try:
+            read[int(item.get("page"))] = str(item.get("text") or "")
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return read, str(got.get("backend") or ""), note
+
+
+def _method_for(backend: str) -> str:
+    return "vision" if re.search(r"vision|vlm|llava|[-_.]vl\b", backend or "", re.IGNORECASE) else "ocr"
+
+
+def decide_pages(path: Path, units: list[Unit], force_ocr: bool = False) -> list[dict]:
+    """Decide, page by page, how each page's text was obtained and fill the pages that needed OCR / vision.
+
+    Returns one entry per page: {page, method: text_layer | ocr | vision | empty, reason, chars[, ocr_note]}. Pages with a usable
+    text layer keep PyMuPDF's text and never reach the OCR service (unless `force_ocr`, which sends every page)."""
+    running = running_lines([u.text for u in units])
+    verdicts = [assess_page(u.text, running) for u in units]
+    targets = [u.number for u, v in zip(units, verdicts) if force_ocr or not v.usable]
+    read, backend, note = _ocr_pages(path, targets)
+    method = _method_for(backend)
+    report: list[dict] = []
+    for unit, verdict in zip(units, verdicts):
+        entry: dict = {"page": unit.number}
         text = read.get(unit.number, "")
-        if _page_chars(unit.text) < MIN_TEXT_PER_PAGE and _page_chars(text) > _page_chars(unit.text):
+        wanted = unit.number in targets
+        if wanted and text.strip() and (force_ocr or alnum_chars(text) > verdict.chars):
             unit.text = text
-            done += 1
-    return done
+            entry.update(method=method, reason="forced" if force_ocr else verdict.reason)
+        elif verdict.usable:
+            entry.update(method="text_layer", reason=verdict.reason)
+            if force_ocr:
+                entry.update(reason="forced_ocr_gave_nothing_kept_text_layer", ocr_note=note or "no_text_found")
+        else:
+            skipped = note == "page_limit" and unit.number not in read
+            entry.update(method="empty", reason=verdict.reason, ocr_note=note if (note and (note != "page_limit" or skipped)) else "no_text_found")
+        entry["chars"] = alnum_chars(unit.text)
+        report.append(entry)
+    return report
 
 
 def _is_contents_page(page) -> bool:
@@ -148,7 +191,7 @@ def _typographic_outline(doc) -> list[dict]:
     return outline
 
 
-def extract_pdf(path: Path) -> Extracted:
+def extract_pdf(path: Path, force_ocr: bool = False) -> Extracted:
     import pymupdf as fitz
 
     units: list[Unit] = []
@@ -186,11 +229,9 @@ def extract_pdf(path: Path) -> Extracted:
             units.append(Unit(kind="page", number=index,
                               title=" › ".join(path_titles), text=text))
     title = meta_title.strip() or path.stem
+    page_methods = decide_pages(path, units, force_ocr=force_ocr) if units else []
+    total_chars = sum(_page_chars(unit.text) for unit in units)
     needs_ocr = page_count > 0 and total_chars < MIN_TEXT_PER_PAGE * page_count
-    if needs_ocr and ocr_enabled():
-        if _ocr_thin_pages(path, units, page_count):
-            total_chars = sum(_page_chars(unit.text) for unit in units)
-            needs_ocr = total_chars < MIN_TEXT_PER_PAGE * page_count
     return Extracted(title=title, kind="pdf", units=finish(units),
                      needs_ocr=needs_ocr, pages=page_count, outline=outline,
-                     outline_source=outline_source)
+                     outline_source=outline_source, page_methods=page_methods, ocr_forced=bool(force_ocr))

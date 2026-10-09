@@ -38,6 +38,7 @@ class Progress:
     started_at: float | None = None
     finished_at: float | None = None
     message: str = ""
+    force_ocr: bool = False  # PDFs: send every page to OCR / vision, ignoring the text layer
 
     def to_dict(self) -> dict:
         return {**self.__dict__, "errors": list(self.errors[-200:]), "error_count": len(self.errors)}
@@ -142,7 +143,7 @@ class Indexer:
                     return progress
                 progress.current_file = rel
                 try:
-                    self._index_file(collection, rel, path, known.get(rel), progress)
+                    self._index_file(collection, rel, path, known.get(rel), progress, progress.force_ocr)
                 except Exception as error:  # one bad file must not stop the run
                     log.warning("%s: %s", path, error)
                     progress.errors.append({"path": rel, "error": f"{type(error).__name__}: {error}"[:500]})
@@ -160,7 +161,7 @@ class Indexer:
             self.on_change()
         return progress
 
-    def _index_file(self, collection: Collection, rel: str, path: Path, known: tuple | None, progress: Progress) -> None:
+    def _index_file(self, collection: Collection, rel: str, path: Path, known: tuple | None, progress: Progress, force_ocr: bool = False) -> None:
         stat = path.stat()
         size, mtime = stat.st_size, stat.st_mtime
         current = bool(known) and known[4] == "ok" and known[5] >= INDEX_VERSION
@@ -168,6 +169,8 @@ class Indexer:
             current = pdf_structure_current(known[6])
             if current and known[7] and ocr_enabled():
                 current = False  # a scan listed without text is read now that the OCR service is running
+        if force_ocr and path.suffix.lower() == ".pdf":
+            current = False  # asked to read every page with OCR / vision: re-extract even if unchanged
         if current and known[1] == size and abs(known[2] - mtime) < 1e-6:
             return  # unchanged (cheap check, no read)
         if size > MAX_FILE_BYTES:
@@ -178,7 +181,7 @@ class Indexer:
             return
         kind = kind_for(path, code=collection.code) or "txt"
         try:
-            extracted = extract(path, kind)
+            extracted = extract(path, kind, force_ocr=force_ocr) if kind == "pdf" else extract(path, kind)
         except Exception as error:
             self.documents.record_error(collection.id, rel, kind, size, mtime, digest, f"{type(error).__name__}: {error}")
             raise
@@ -186,7 +189,9 @@ class Indexer:
         chunks = chunk_units(extracted.units)
         meta = ({"pdf_outline": extracted.outline,
                  "pdf_outline_source": extracted.outline_source,
-                 "pdf_structure_version": PDF_STRUCTURE_VERSION}
+                 "pdf_structure_version": PDF_STRUCTURE_VERSION,
+                 "pdf_page_methods": extracted.page_methods,
+                 "pdf_ocr_forced": extracted.ocr_forced}
                 if kind == "pdf" else None)
         self.documents.replace(collection.id, rel, extracted, chunks, size, mtime, digest,
                                meta=meta)

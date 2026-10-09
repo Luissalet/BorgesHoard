@@ -53,13 +53,13 @@ class IndexWorker:
         return bool(self._thread and self._thread.is_alive())
 
     # ---------- queueing ----------
-    def enqueue(self, collection_id: int) -> bool:
+    def enqueue(self, collection_id: int, force_ocr: bool = False) -> bool:
         """Queue a (re)index; returns False when it was already queued or running."""
         with self._lock:
             if collection_id in self._queued or self._current == collection_id:
                 return False
             self._queued.add(collection_id)
-            self._progress[collection_id] = Progress(collection_id=collection_id)
+            self._progress[collection_id] = Progress(collection_id=collection_id, force_ocr=force_ocr)
         self._queue.put(collection_id)
         return True
 

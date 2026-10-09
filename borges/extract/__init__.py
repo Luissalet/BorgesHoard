@@ -59,10 +59,13 @@ def kind_for(path: Path, code: bool = False) -> str | None:
     return None
 
 
-def extract(path: Path, kind: str | None = None) -> Extracted:
+def extract(path: Path, kind: str | None = None, force_ocr: bool = False) -> Extracted:
+    """`force_ocr` only matters for PDFs: every page goes to OCR / vision instead of just the pages without a usable text layer."""
     kind = kind or kind_for(path, code=True)
     if kind is None:
         raise ValueError(f"Unsupported file type: {path.suffix}")
     if kind == "code":
         return extract_plain(path, kind="code")
+    if kind == "pdf":
+        return extract_pdf(path, force_ocr=force_ocr)
     return EXTRACTORS[kind](path)

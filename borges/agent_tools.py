@@ -59,6 +59,7 @@ class SimilarArgs(BaseModel):
 
 class ReindexArgs(BaseModel):
     collection_id: int = Field(..., ge=1)
+    force_ocr: bool = Field(False, description="PDFs only: send every page to OCR / vision instead of only the pages without a usable text layer. Slow; only when the text layer is known to be wrong.")
 
 
 class ChatsRecentArgs(BaseModel):
@@ -117,6 +118,7 @@ def run_read(services: Services, args: ReadArgs) -> dict:
         "text": text[: args.max_chars] + ("…" if truncated else ""),
         "truncated": truncated,
         "prev": unit["prev"], "next": unit["next"],
+        "extraction": unit.get("extraction"),
     }
 
 
@@ -129,7 +131,7 @@ def run_document(services: Services, args: DocumentArgs) -> dict:
 
 def run_documents(services: Services, args: DocumentsArgs) -> dict:
     result = services.queries.list_documents(args.collection, args.q.strip(), args.limit, args.cursor)
-    keys = ("id", "collection_id", "title", "kind", "rel_path", "pages", "units", "chunks", "needs_ocr", "status", "indexed_at")
+    keys = ("id", "collection_id", "title", "kind", "rel_path", "pages", "units", "chunks", "needs_ocr", "page_method_counts", "status", "indexed_at")
     return {"documents": [{k: d[k] for k in keys} for d in result["documents"]], "next_cursor": result["next_cursor"]}
 
 
@@ -157,8 +159,8 @@ def run_similar(services: Services, args: SimilarArgs) -> dict:
 
 
 def run_reindex(services: Services, args: ReindexArgs) -> dict:
-    queued = services.reindex(args.collection_id)
-    return {"ok": True, "queued": queued, "note": "Queued." if queued else "Already indexing or queued."}
+    queued = services.reindex(args.collection_id, force_ocr=args.force_ocr)
+    return {"ok": True, "queued": queued, "force_ocr": args.force_ocr, "note": "Queued." if queued else "Already indexing or queued."}
 
 
 def run_chats_recent(services: Services, args: ChatsRecentArgs) -> dict:
@@ -214,12 +216,12 @@ def run_embed_status(services: Services, _: Empty) -> dict:
 TOOLS: list[Tool] = [
     Tool("library_search", "Search your documents, past chats and saved links; exact citation, snippet. Busca documentos, chats, enlaces.\nHybrid BM25 + multilingual embeddings. Filter source='faustus' for chats, 'links' for saved links, since/until for a date range; citations read «Title», p. 12 / file.md § Section / [chat «Title» · date · turno N] / [enlace «Title» · site].\nSinónimos: buscar, dónde leí, dónde escribí, qué dijimos, qué decidimos, apuntes, mis documentos, mis chats, conversaciones, cita, página, biblioteca, libro, tesis, notas, artículo.", SearchArgs, ann(True), run_search),
     Tool("library_read", "Read the exact text of a page or section before quoting it. Keywords: leer página, cita textual, qué dice.\nRead the exact text of one page or section of a document (by page, section ordinal or a chunk_id from library_search), with prev/next pointers. Use it before quoting so the quote is verbatim.\nSinónimos: leer, página, sección, capítulo, pasaje, texto completo, cita textual, qué dice, manuscrito, libro, apuntes.", ReadArgs, ann(True), run_read),
-    Tool("library_document", "Metadata and outline (pages or sections with titles) of one document.\nSinónimos: documento, índice, esquema, capítulos, páginas, libro, tesis, ficha.", DocumentArgs, ann(True), run_document),
+    Tool("library_document", "Metadata and outline (pages or sections with titles) of one document.\nFor a PDF it also gives page_methods: per page how the text was read (text_layer, ocr, vision or empty) and why.\nSinónimos: documento, índice, esquema, capítulos, páginas, libro, tesis, ficha.", DocumentArgs, ann(True), run_document),
     Tool("library_documents", "List indexed documents, optionally filtered by collection or by title/file name. Paginated with next_cursor.\nSinónimos: mis documentos, lista, biblioteca, archivos, libros, PDF, qué tengo, apuntes.", DocumentsArgs, ann(True), run_documents),
     Tool("library_collections", "The folders (collections) that make up the library, with document and chunk counts.\nSinónimos: colecciones, carpetas, biblioteca, dónde están mis documentos.", Empty, ann(True), run_collections),
     Tool("library_status", "Index health: embedding model state, counts, what is being indexed and the queue.\nSinónimos: estado, está indexando, modelo, cuántos documentos, progreso, biblioteca.", Empty, ann(True), run_status),
     Tool("library_similar", "Passages similar in meaning to a chunk, across the library. Keywords: parecido, dónde más, relacionado.\nPassages similar in meaning to a given chunk (from library_search), across the whole library. Good for 'where else did I write about this'.\nSinónimos: parecido, similar, relacionado, dónde más, otros pasajes, misma idea.", SimilarArgs, ann(True), run_similar),
-    Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, ann(False, False, True), run_reindex),
+    Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. force_ocr=true re-reads every PDF page with OCR / vision instead of only the pages without a usable text layer. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, ann(False, False, True), run_reindex),
     Tool("library_add_collection", "Add a folder to the library and index it (only when asked). Keywords: añadir carpeta, indexar, biblioteca.\nAdd a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, ann(False, False, True), run_add_collection),
     Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, ann(True), run_chats_recent),
     Tool("embed_texts", "Embed texts into vectors with the family's multilingual model. Keywords: embeddings, vectores.\nTurn 1 to 512 texts into unit-length vectors (document or query side) with Borges's multilingual MiniLM model, the one embedding space of the family; the answer says `model` and `dim`: store both next to the vectors and re-embed when they change. For programs, not for reading.\nSinónimos: embeddings, vectores, incrustaciones, representar texto, similitud semántica, búsqueda semántica, modelo de lenguaje.", EmbedTextsArgs, ann(True), run_embed_texts),

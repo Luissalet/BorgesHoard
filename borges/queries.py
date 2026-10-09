@@ -21,6 +21,16 @@ def _meta(value) -> dict:
         return {}
 
 
+def _method_counts(meta: dict) -> dict:
+    """PDF: how many pages were read by each method (text_layer | ocr | vision | empty); {} for other kinds or older indexes."""
+    counts: dict[str, int] = {}
+    for entry in meta.get("pdf_page_methods") or []:
+        method = str(entry.get("method") or "")
+        if method:
+            counts[method] = counts.get(method, 0) + 1
+    return counts
+
+
 def document_json(row) -> dict:
     keys = row.keys()
     return {
@@ -29,6 +39,7 @@ def document_json(row) -> dict:
         "needs_ocr": bool(row["needs_ocr"]), "status": row["status"], "error": row["error"], "indexed_at": row["indexed_at"],
         "index_version": row["index_version"], "filename": Path(row["rel_path"]).name,
         "meta": _meta(row["meta"]) if "meta" in keys else {},
+        "page_method_counts": _method_counts(_meta(row["meta"]) if "meta" in keys else {}),
     }
 
 
@@ -94,6 +105,8 @@ class Queries:
         structure = meta.get("pdf_outline") if doc["kind"] == "pdf" else None
         doc["structure"] = structure if isinstance(structure, list) else []
         doc["structure_source"] = meta.get("pdf_outline_source", "none") if doc["kind"] == "pdf" else "none"
+        doc["page_methods"] = meta.get("pdf_page_methods") or [] if doc["kind"] == "pdf" else []
+        doc["ocr_forced"] = bool(meta.get("pdf_ocr_forced")) if doc["kind"] == "pdf" else False
         return doc
 
     def document_brief(self, document_id: int) -> dict | None:
@@ -118,9 +131,13 @@ class Queries:
             prev = c.execute("SELECT id, kind, number, title FROM units WHERE document_id = ? AND ordinal = ?", (document_id, row["ordinal"] - 1)).fetchone()
             nxt = c.execute("SELECT id, kind, number, title FROM units WHERE document_id = ? AND ordinal = ?", (document_id, row["ordinal"] + 1)).fetchone()
             total = c.execute("SELECT COUNT(*) FROM units WHERE document_id = ?", (document_id,)).fetchone()[0]
+            meta_row = c.execute("SELECT kind, meta FROM documents WHERE id = ?", (document_id,)).fetchone()
+        extraction = None
+        if meta_row and meta_row["kind"] == "pdf" and row["kind"] == "page":
+            extraction = next((dict(e) for e in _meta(meta_row["meta"]).get("pdf_page_methods") or [] if e.get("page") == row["number"]), None)
         return {"id": row["id"], "document_id": document_id, "ordinal": row["ordinal"], "kind": row["kind"], "number": row["number"],
                 "title": row["title"], "line_start": row["line_start"], "text": row["text"], "total": total,
-                "prev": dict(prev) if prev else None, "next": dict(nxt) if nxt else None}
+                "prev": dict(prev) if prev else None, "next": dict(nxt) if nxt else None, "extraction": extraction}
 
     def chunk(self, chunk_id: int) -> dict | None:
         with self.db.lock:
