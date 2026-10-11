@@ -89,7 +89,8 @@ def test_agent_tools_and_auth(client, library):
     catalog = client.get("/api/agent/tools").json()
     names = [t["name"] for t in catalog["tools"]]
     assert names == ["library_search", "library_read", "library_document", "library_documents", "library_collections", "library_status",
-                     "library_similar", "library_reindex", "library_add_collection", "chats_recent", "embed_texts", "embed_status"]
+                     "library_similar", "library_reindex", "library_add_collection", "chats_recent", "library_question_keys", "library_generate_questions",
+                     "library_question_keys_settings", "embed_texts", "embed_status"]
     assert "cite" in catalog["instructions"].lower()
     for tool in catalog["tools"]:
         assert "Sinónimos:" in tool["description"] and tool["inputSchema"]["type"] == "object"

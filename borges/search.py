@@ -22,6 +22,7 @@ PER_SECTION = 1  # hits shown per (document, page/section); the rest go into `al
 CANDIDATES = 40  # per retriever before fusion
 DENSE_MIN_SCORE = 0.2  # cosine below this is noise for MiniLM-class models
 SNIPPET_CHARS = 240
+QUESTION_WEIGHT = 1.25  # a query that matches a question the chunk answers is a more precise signal than a word overlap with its text
 
 Reranker = Callable[[str, list[dict]], list[dict]]  # hook: (query, hits) -> hits, reordered
 
@@ -58,7 +59,9 @@ def _in_date_range(date: str | None, since: str | None, until: str | None) -> bo
 
 
 class Search:
-    def __init__(self, db: Database, docs: DocumentStore, queries: Queries, embedder: Embedder, collections=None, reranker: Reranker | None = None):
+    def __init__(self, db: Database, docs: DocumentStore, queries: Queries, embedder: Embedder, collections=None, reranker: Reranker | None = None,
+                 question_keys=None):
+        self.question_keys = question_keys  # question_keys.QuestionKeys or None
         self.db = db
         self.docs = docs
         self.queries = queries
@@ -73,6 +76,8 @@ class Search:
     # ---------- dense index cache ----------
     def invalidate(self) -> None:
         self._dirty = True
+        if self.question_keys is not None:
+            self.question_keys.invalidate()
 
     def _dense_index(self) -> tuple[np.ndarray, np.ndarray]:
         with self._lock:
@@ -142,8 +147,30 @@ class Search:
         """Reciprocal rank fusion of rankings of `(chunk_id, score)` (the scores are not used, only the order)."""
         return vecmath.rrf([[chunk_id for chunk_id, _ in ranking] for ranking in rankings], k=RRF_K)
 
+    def _question_legs(self, q: str, mode: str, dense_ok: bool, collection_ids: set[int] | None) -> tuple[list[list[tuple[int, float]]], dict[int, str]]:
+        """Rankings of chunks by their generated question keys (BM25 and, with the model loaded, cosine) and, per chunk,
+        the question that matched. Empty when no keys exist."""
+        keys = self.question_keys
+        if keys is None or not keys.has_keys():
+            return [], {}
+        legs: list[list[tuple[int, float]]] = []
+        why: dict[int, str] = {}
+        if mode in ("hybrid", "bm25"):
+            ranking, texts = keys.bm25(match_ladder(q), CANDIDATES, collection_ids)
+            if ranking:
+                legs.append(ranking)
+                why.update(texts)
+        if mode in ("hybrid", "dense") and dense_ok:
+            allowed = self.queries.chunk_ids_for_collections(collection_ids) if collection_ids is not None else None
+            ranking, texts = keys.dense(self.embedder.embed_query(q), CANDIDATES, allowed, DENSE_MIN_SCORE)
+            if ranking:
+                legs.append(ranking)
+                for chunk_id, text in texts.items():
+                    why.setdefault(chunk_id, text)
+        return legs, why
+
     def search(self, q: str, mode: str = "hybrid", limit: int = 10, collection_id: int | None = None,
-               source: str | None = None, since: str | None = None, until: str | None = None) -> dict:
+               source: str | None = None, since: str | None = None, until: str | None = None, questions: bool = True) -> dict:
         q = q.strip()
         if len(q) < MIN_QUERY_CHARS:
             raise ValueError(f"The query needs at least {MIN_QUERY_CHARS} characters.")
@@ -157,8 +184,16 @@ class Search:
             rankings.append(self.bm25(q, CANDIDATES, collection_ids))
         if mode in ("hybrid", "dense") and dense_ok:
             rankings.append(self.dense(q, CANDIDATES, collection_ids))
-        fused = self.rrf(rankings) if mode == "hybrid" else [(cid, s) for cid, s in (rankings[0] if rankings else [])]
+        question_legs, matched = self._question_legs(q, mode, dense_ok, collection_ids) if questions else ([], {})
+        if question_legs:  # the keys join the fusion as extra rankings; RRF keys on the chunk id, so a chunk found by its text and by its questions is one hit
+            fused = vecmath.rrf([[cid for cid, _ in r] for r in [*rankings, *question_legs]],
+                                weights=[1.0] * len(rankings) + [QUESTION_WEIGHT] * len(question_legs), k=RRF_K)
+        else:
+            fused = self.rrf(rankings) if mode == "hybrid" else [(cid, s) for cid, s in (rankings[0] if rankings else [])]
         hits = self._hydrate(fused[: limit * 4 if (since or until) else limit * 2], q)
+        for hit in hits:
+            if hit["chunk_id"] in matched:
+                hit["matched_question"] = matched[hit["chunk_id"]]
         hits = self._dedupe(hits)
         if since or until:
             hits = [h for h in hits if _in_date_range(h.get("date"), since, until)]

@@ -103,6 +103,38 @@ MIGRATIONS: list[str] = [
     ALTER TABLE collections ADD COLUMN sync_status TEXT NOT NULL DEFAULT '{}';
     ALTER TABLE documents ADD COLUMN meta TEXT NOT NULL DEFAULT '{}';
     """,
+    # 4: question keys (2-3 generated questions per chunk as extra searchable keys; off by default, see question_keys.py)
+    """
+    CREATE TABLE chunk_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+      question TEXT NOT NULL
+    );
+    CREATE INDEX chunk_questions_chunk ON chunk_questions(chunk_id);
+    CREATE VIRTUAL TABLE questions_fts USING fts5(
+      question,
+      content='chunk_questions', content_rowid='id',
+      tokenize = 'unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER chunk_questions_ai AFTER INSERT ON chunk_questions BEGIN
+      INSERT INTO questions_fts(rowid, question) VALUES (new.id, new.question);
+    END;
+    CREATE TRIGGER chunk_questions_ad AFTER DELETE ON chunk_questions BEGIN
+      INSERT INTO questions_fts(questions_fts, rowid, question) VALUES ('delete', old.id, old.question);
+    END;
+    CREATE TABLE question_embeddings (
+      question_id INTEGER PRIMARY KEY REFERENCES chunk_questions(id) ON DELETE CASCADE,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      vector BLOB NOT NULL
+    );
+    CREATE TABLE chunk_question_state (
+      chunk_id INTEGER PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+      state TEXT NOT NULL,
+      model TEXT NOT NULL DEFAULT '',
+      generated_at REAL NOT NULL
+    );
+    """,
 ]
 
 

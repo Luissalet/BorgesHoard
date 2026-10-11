@@ -20,6 +20,7 @@ A document with needs_ocr is a scanned PDF without text: it is listed but cannot
 library_add_collection and library_reindex change the index; call them only when the user asks. Indexing runs in the background: library_status shows the queue.
 The library can also hold the user's own past Faustus conversations (a `faustus` source), indexed as one document per chat. For questions about past conversations or decisions ("¿qué dijimos?", "¿qué decidimos?", "¿en qué quedamos?", "what did we decide", "what did we say about"), call library_search with source="faustus" (optionally since/until for a date range), or chats_recent to browse recent chats, then quote the `citation` field verbatim — it already reads like `[chat «Title» · date · turno N]`.
 Other apps of the family use `embed_texts` / `embed_status` to embed text with this library's multilingual model (not for answering the user).
+Some passages carry generated question keys (2-3 questions the passage answers); a hit found through one has `matched_question`. library_question_keys says which documents have them; library_generate_questions and library_question_keys_settings change them, only when the user asks.
 A `links` source indexes the user's saved links from Links Hoard (one document per link, the page text as Links Hoard extracted it). For "what did I save about", "aquel artículo que guardé", "dónde leí", call library_search with source="links"; the citation reads `[enlace «Title» · site]` and the hit carries the `url`."""
 
 
@@ -31,6 +32,7 @@ class SearchArgs(BaseModel):
     source: str | None = Field(None, pattern="^(folder|faustus|links)$", description="Restrict to one source kind: 'faustus' for the user's past conversations, 'links' for saved links (Links Hoard), 'folder' for documents.")
     since: str | None = Field(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date (YYYY-MM-DD): only chats/documents dated on or after this.")
     until: str | None = Field(None, pattern="^\\d{4}-\\d{2}-\\d{2}$", description="ISO date (YYYY-MM-DD): only chats/documents dated on or before this.")
+    questions: bool = Field(True, description="Use the generated question keys (when the library has them) as extra rankings; false searches the passage text only.")
 
 
 class ReadArgs(BaseModel):
@@ -77,14 +79,14 @@ class AddCollectionArgs(BaseModel):
 
 def _hit(h: dict) -> dict:
     keys = ("chunk_id", "document_id", "collection_id", "collection", "source_kind", "title", "kind", "rel_path",
-            "page", "section", "line", "date", "project", "url", "score", "citation", "snippet")
+            "page", "section", "line", "date", "project", "url", "score", "citation", "snippet", "matched_question")
     return {k: h[k] for k in keys if k in h}
 
 
 def run_search(services: Services, args: SearchArgs) -> dict:
     if args.collection is not None and services.collections.get(args.collection) is None:
         raise LookupError(f"Collection {args.collection} does not exist.")
-    result = services.search.search(args.q, args.mode, args.limit, args.collection, source=args.source, since=args.since, until=args.until)
+    result = services.search.search(args.q, args.mode, args.limit, args.collection, source=args.source, since=args.since, until=args.until, questions=args.questions)
     hits = [_hit(h) for h in result["hits"]]
     note = None
     if not hits:
@@ -173,6 +175,57 @@ def run_add_collection(services: Services, args: AddCollectionArgs) -> dict:
     return {"ok": True, "collection": collection.to_dict(), "note": "Indexing has started in the background; library_status shows progress."}
 
 
+class QuestionKeysArgs(BaseModel):
+    document_id: int | None = Field(None, ge=1, description="Restrict the report to one document.")
+    collection_id: int | None = Field(None, ge=1, description="Restrict the report to one collection.")
+
+
+class GenerateQuestionsArgs(BaseModel):
+    document_id: int | None = Field(None, ge=1, description="Document to (re)generate the question keys for.")
+    collection_id: int | None = Field(None, ge=1, description="Or a whole collection.")
+    force: bool = Field(False, description="Regenerate chunks that already have keys; by default only chunks without keys (or whose earlier try found no model) are processed.")
+    max_chunks: int = Field(50, ge=1, le=5000, description="At most this many chunks per call (each is one model call); `remaining` says how many are left.")
+
+
+class QuestionKeysSettingsArgs(BaseModel):
+    enabled: bool | None = Field(None, description="Generate question keys while indexing (default off). Omit every field to just read the setting.")
+    base_url: str | None = Field(None, max_length=500, description="OpenAI-compatible endpoint of the local model (default the local Ollama, http://127.0.0.1:11434/v1).")
+    model: str | None = Field(None, max_length=200, description="Model name to ask for the questions; a small local one is enough.")
+    api_key: str | None = Field(None, max_length=500)
+
+
+def run_question_keys(services: Services, args: QuestionKeysArgs) -> dict:
+    if args.document_id is not None and services.queries.document_brief(args.document_id) is None:
+        raise LookupError(f"Document {args.document_id} does not exist.")
+    if args.collection_id is not None and services.collections.get(args.collection_id) is None:
+        raise LookupError(f"Collection {args.collection_id} does not exist.")
+    status = services.question_keys.status(args.document_id, args.collection_id)
+    note = None
+    if not status["keys_exist"]:
+        note = "No question keys yet. library_generate_questions creates them for a document; library_question_keys_settings turns them on while indexing."
+    elif status["chunks_unavailable"]:
+        note = "Some chunks were processed while the question model was unreachable; library_generate_questions retries them."
+    return {**status, "note": note}
+
+
+def run_generate_questions(services: Services, args: GenerateQuestionsArgs) -> dict:
+    if args.document_id is None and args.collection_id is None:
+        raise ValueError("Give a document_id or a collection_id.")
+    if args.document_id is not None and services.queries.document_brief(args.document_id) is None:
+        raise LookupError(f"Document {args.document_id} does not exist.")
+    if args.collection_id is not None and services.collections.get(args.collection_id) is None:
+        raise LookupError(f"Collection {args.collection_id} does not exist.")
+    result = services.question_keys.generate(args.document_id, args.collection_id, args.force, args.max_chunks)
+    result["note"] = (None if result["model_available"] else
+                      "The question model could not be reached; the chunks are marked unavailable and nothing was lost. Check library_question_keys_settings and try again.")
+    return result
+
+
+def run_question_keys_settings(services: Services, args: QuestionKeysSettingsArgs) -> dict:
+    patch = args.model_dump(exclude_none=True)
+    return {"settings": services.question_keys.update_settings(patch) if patch else services.question_keys.settings(), "changed": sorted(patch)}
+
+
 # ---------- family service: text embeddings (the owner of `fam_embed`; see hoard_link docs/commons/services.md section 6) ----------
 EMBED_MAX_TEXTS = 512
 EMBED_TEXT_CHARS = 4000  # each text is cut here before the model sees it (the model reads far fewer tokens anyway)
@@ -224,6 +277,9 @@ TOOLS: list[Tool] = [
     Tool("library_reindex", "Reindex one collection (only new or changed files; only when asked). Keywords: reindexar, actualizar índice.\nQueue a non-destructive reindex of one collection: only new or changed files are re-extracted; deleted files are purged. force_ocr=true re-reads every PDF page with OCR / vision instead of only the pages without a usable text layer. Only when the user asks.\nSinónimos: reindexar, actualizar, volver a indexar, refrescar, carpeta, colección.", ReindexArgs, ann(False, False, True), run_reindex),
     Tool("library_add_collection", "Add a folder to the library and index it (only when asked). Keywords: añadir carpeta, indexar, biblioteca.\nAdd a folder to the library (write). The path must exist on the user's PC; adding the same folder twice returns the existing collection without reindexing. Indexing of a new folder starts in the background. Only when the user asks.\nSinónimos: añadir carpeta, nueva colección, indexar carpeta, agregar documentos, biblioteca.", AddCollectionArgs, ann(False, False, True), run_add_collection),
     Tool("chats_recent", "Recently indexed Faustus chats (title, date, project). Chats recientes indexados de Faustus.\nNewest first; use to browse before searching, or for 'what have we talked about lately'.\nSinónimos: chats recientes, conversaciones recientes, últimas charlas, qué hemos hablado, historial reciente.", ChatsRecentArgs, ann(True), run_chats_recent),
+    Tool("library_question_keys", "Do passages have generated question keys? Per-document report. Claves de pregunta del índice.\nCounts of chunks with keys, without keys (empty, model unavailable, never processed) and questions, for the library, one collection or one document; whether the question model answers; whether question keys are on.\nSinónimos: preguntas generadas, claves de pregunta, índice de preguntas, qué preguntas responde, cobertura, estado del índice.", QuestionKeysArgs, ann(True), run_question_keys),
+    Tool("library_generate_questions", "Generate or regenerate the question keys of a document or collection (write). Generar preguntas por fragmento.\nA small local model writes 2-3 questions per passage; they become extra search keys that point to the passage. Skips silently and marks the chunks when the model is unreachable. At most max_chunks per call. Only when the user asks.\nSinónimos: generar preguntas, regenerar claves, preguntas por fragmento, mejorar la búsqueda, indexar preguntas.", GenerateQuestionsArgs, ann(False, False, True), run_generate_questions),
+    Tool("library_question_keys_settings", "Read or change the question-keys setting: on/off while indexing, local model and endpoint (write).\nOff by default. Omit all fields to read. Sinónimos: activar preguntas generadas, modelo de preguntas, configuración, claves de pregunta.", QuestionKeysSettingsArgs, ann(False, False, True), run_question_keys_settings),
     Tool("embed_texts", "Embed texts into vectors with the family's multilingual model. Keywords: embeddings, vectores.\nTurn 1 to 512 texts into unit-length vectors (document or query side) with Borges's multilingual MiniLM model, the one embedding space of the family; the answer says `model` and `dim`: store both next to the vectors and re-embed when they change. For programs, not for reading.\nSinónimos: embeddings, vectores, incrustaciones, representar texto, similitud semántica, búsqueda semántica, modelo de lenguaje.", EmbedTextsArgs, ann(True), run_embed_texts),
     Tool("embed_status", "State of the embedding model: ready, loading, downloading or disabled. Keywords: modelo de embeddings, listo.\nWhether `embed_texts` can answer now: backend, model, dimension, state (disabled, loading, downloading, ready, error), error and load time. Check before indexing a lot of text.\nSinónimos: estado del modelo, modelo de embeddings, está listo, cargando, descargando, dimensión, vectores.", Empty, ann(True), run_embed_status),
 ]

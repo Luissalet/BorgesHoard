@@ -115,7 +115,8 @@ def walk(collection: Collection) -> list[tuple[str, Path]]:
 
 
 class Indexer:
-    def __init__(self, collections: CollectionStore, documents: DocumentStore, embedder: Embedder, on_change=None):
+    def __init__(self, collections: CollectionStore, documents: DocumentStore, embedder: Embedder, on_change=None, question_keys=None):
+        self.question_keys = question_keys  # question_keys.QuestionKeys: optional generated questions per chunk
         self.collections = collections
         self.documents = documents
         self.embedder = embedder
@@ -201,6 +202,14 @@ class Indexer:
     def embed_pending(self, progress: Progress, collection_id: int | None = None, cancel: threading.Event | None = None) -> int:
         """Embed every chunk that lacks a vector for the current model. Returns how many were embedded."""
         cancel = cancel or threading.Event()
+        try:
+            return self._embed_chunks(progress, collection_id, cancel)
+        finally:
+            if self.question_keys is not None and not cancel.is_set() and self.question_keys.enabled:  # off by default
+                progress.phase = "questions"
+                self.question_keys.run_pending(collection_id, cancel)  # never fails the run
+
+    def _embed_chunks(self, progress: Progress, collection_id: int | None, cancel: threading.Event) -> int:
         if not self.embedder.ensure_loaded():
             return 0
         model = self.embedder.model

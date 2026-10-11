@@ -17,6 +17,16 @@ Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo m
 - **Fuente de enlaces**: los enlaces guardados en Links Hoard, a través del Hoard Hub (sin URL ni token), cada uno un documento citable `[enlace «Título» · sitio]`. Ver «La fuente de enlaces» más abajo.
 - **Fuente Faustus**: señala tu propio Faustus (`http://127.0.0.1:7000` por defecto) y Borges indexa tus conversaciones pasadas, así el asistente puede citar lo que decidisteis en un chat anterior. Ver «La fuente Faustus» más abajo.
 
+## Claves de pregunta (opcional, desactivadas por defecto)
+
+Al indexar, un modelo local pequeño puede escribir 2-3 preguntas que responde cada fragmento («¿cuánto cuesta reparar los espejos del telescopio?»). Se guardan como claves de búsqueda extra que apuntan al fragmento: BM25 sobre las preguntas (tabla FTS5 `questions_fts`) y, con el modelo de embeddings cargado, coseno sobre sus vectores (`question_embeddings`). En `library_search` y `GET /api/search` las dos patas entran en la fusión de rangos como dos rankings más (peso 1,25 frente a 1,0 de las patas del texto) y se deduplican al fragmento: un fragmento hallado por su texto y por sus preguntas es un solo resultado; el que salió por una clave lleva `matched_question`. `questions=false` busca solo en el texto. Las claves se usan siempre que existan, en los modos `hybrid`, `bm25` y `dense`.
+
+- El modelo de preguntas es cualquier endpoint de chat compatible con OpenAI (`<base_url>/chat/completions`): por defecto un Ollama local (`http://127.0.0.1:11434/v1`); hay que indicar el nombre del modelo. Ajuste: `PUT /api/question-keys/settings` o `library_question_keys_settings` (`enabled`, `base_url`, `model`, `api_key`; la clave vuelve enmascarada). Con `enabled`, cada indexación genera claves para los fragmentos que no las tienen, tras los embeddings; desactivado (por defecto) no se genera nada y nada cambia.
+- Si el modelo no responde, la indexación no falla: los fragmentos quedan marcados `unavailable` (`chunk_question_state`) y se reintentan en la siguiente indexación o a demanda; tres fallos seguidos cortan la pasada. Los fragmentos de menos de 60 caracteres o con respuesta inservible quedan `empty`. Un fragmento que se vuelve a extraer pierde sus claves y vuelve a `pending`.
+- Estado: `GET /api/question-keys[?document=&collection=&probe=]` o `library_question_keys` (fragmentos con claves, vacíos, sin modelo, pendientes; preguntas; preguntas sin vector; si el modelo responde). `GET /api/status` trae el mismo informe en `question_keys`, sin sondear el modelo.
+- (Re)generar: `POST /api/question-keys/generate {document_id | collection_id, force?, max_chunks?}` o `library_generate_questions` (funciona con el ajuste desactivado; `force` sustituye las claves existentes; `max_chunks` limita las llamadas al modelo por petición y `remaining` dice cuántas quedan). `GET /api/question-keys/chunk/{id}` lista las preguntas de un fragmento.
+- Evaluación sin conexión: `python scripts/eval_question_keys.py` indexa un corpus pequeño con un generador guionizado e imprime el recall@1 de consultas en forma de pregunta con y sin claves (hoy 0,60 sin claves y 1,00 con claves en ese corpus; lo comprueba `tests/test_question_keys.py`). Mide el mecanismo, no un modelo real: el recall con un modelo real sobre una biblioteca real aún no está medido, y por eso no se activa por defecto.
+
 ## Requisitos
 
 - Windows 10/11 (también Linux/macOS), Python 3.11 o superior (3.13 va bien), Node 22 solo para construir el cliente.
@@ -55,6 +65,7 @@ Abre http://127.0.0.1:5184, entra en **Colecciones** y añade una carpeta. La pr
 | `BORGES_OCR_LANG` | `es` | Idioma que se pide al motor de OCR. |
 | `BORGES_WATCH` | `1` | `0` desactiva la vigilancia de carpetas. |
 | `BORGES_AUTOSTART` | `1` | `0` no precarga el modelo ni reindexa al arrancar. |
+| `BORGES_QUESTIONS_URL` / `BORGES_QUESTIONS_MODEL` / `BORGES_QUESTIONS_KEY` | Ollama local `http://127.0.0.1:11434/v1` / ninguno / ninguna | Valores por defecto del modelo de las claves de pregunta cuando el ajuste guardado en la base está vacío. |
 
 ### Acceso desde el móvil (a través de un túnel)
 
@@ -98,7 +109,7 @@ Hoard sale del índice en la siguiente sincronización. Cada sincronización con
 
 `mcp_server.py` es un puente stdio: pide la lista de herramientas a la aplicación en marcha y reenvía cada llamada a `POST /api/agent/call` con el token de `data/mcp-token`. Nunca abre la base de datos. Faustus detecta la aplicación por `/api/health` y rellena la conexión con `faustus-plugin.json`.
 
-Herramientas: `library_search` (con `source='folder'|'faustus'`, `since`, `until`), `library_read`, `library_document`, `library_documents`, `library_collections`, `library_status`, `library_similar`, `library_reindex`, `library_add_collection`, `chats_recent` (últimos chats de Faustus indexados), y los dos del servicio de embeddings de la familia: `embed_texts` (de 1 a 512 textos → vectores del modelo multilingüe, sin recorte de tamaño) y `embed_status` (estado del modelo). Borges es el dueño de los embeddings de la familia: el resto de apps llaman a esas dos herramientas a través del hub (`fam_embed` en Hoard Link), de modo que toda la familia usa un solo modelo y un solo espacio de vectores.
+Herramientas: `library_search` (con `source='folder'|'faustus'`, `since`, `until`), `library_read`, `library_document`, `library_documents`, `library_collections`, `library_status`, `library_similar`, `library_reindex`, `library_add_collection`, `chats_recent` (últimos chats de Faustus indexados), y los dos del servicio de embeddings de la familia: `embed_texts` (de 1 a 512 textos → vectores del modelo multilingüe, sin recorte de tamaño) y `embed_status` (estado del modelo). Borges es el dueño de los embeddings de la familia: el resto de apps llaman a esas dos herramientas a través del hub (`fam_embed` en Hoard Link), de modo que toda la familia usa un solo modelo y un solo espacio de vectores. Claves de pregunta: `library_question_keys` (informe por documento o colección), `library_generate_questions` (genera o regenera; escritura) y `library_question_keys_settings` (activar y elegir modelo; escritura); `library_search` acepta `questions` y devuelve `matched_question` en los resultados hallados por una clave.
 
 La protección de peticiones, el formato de errores (con `code`), los ficheros PWA, el servidor de la interfaz (`index.html` nunca se guarda en caché), el puente MCP, las rutas del agente y la clase de base de datos son el código común de Hoard Link. Una segunda ejecución de `python -m borges` avisa de que ya hay una en marcha y termina sin tocar el token ni la base de datos; el token de `data/mcp-token` se crea una vez y se conserva. Al añadir una carpeta se acepta la ruta pegada con sus comillas y se rechaza la raíz de una unidad, la carpeta de usuario, las del sistema, las de configuración o secretos y la propia carpeta de datos. Las instrucciones que acompañan a las herramientas obligan al asistente a responder solo con texto recuperado, a leer el pasaje completo antes de citar, a citar siempre (documento y página/sección, o el chat y la fecha) y a decir claramente cuando no encuentra nada; para preguntas sobre conversaciones o decisiones pasadas («¿qué decidimos sobre X?») le dicen que busque con `source="faustus"` o llame a `chats_recent`.
 
@@ -113,6 +124,7 @@ Incluye la fuente Faustus contra una aplicación ASGI de Faustus simulada (login
 
 ## Límites (v1)
 
+- Las claves de pregunta están desactivadas por defecto, su mejora con un modelo real sobre bibliotecas reales no está medida y aún no tienen interfaz (solo API y MCP); el nombre del modelo lo pone el usuario.
 - El OCR es el de Kafka: sin el hub y Kafka's Hoard en marcha, los PDF escaneados se listan con «necesita OCR» y no se pueden buscar hasta que un escaneo posterior encuentre el servicio.
 - Las tablas de DOCX se aplanan como filas `celda | celda`; imágenes y notas al pie se ignoran.
 - Los vectores se mantienen en memoria (~150 MB por cada 100 000 pasajes).

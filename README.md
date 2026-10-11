@@ -19,6 +19,16 @@ Part of the Hoard family (see `faustus-plugin.json`).
 - **Links source**: the links saved in Links Hoard, through the Hoard Hub (no URL, no token), each one a citable document `[enlace «Title» · site]`. See "The links source" below.
 - **Faustus source**: point Borges at your own Faustus workspace (`http://127.0.0.1:7000` by default) and it indexes your past conversations so the assistant can cite what was decided in an earlier chat. See "The Faustus source" below.
 
+## Question keys (optional, off by default)
+
+At index time a small local model can write 2-3 questions each chunk answers ("how much does it cost to repair the telescope mirrors?"). They are stored as extra searchable keys that point to the chunk: BM25 over the questions (FTS5 table `questions_fts`) and, when the embedding model is loaded, cosine over their vectors (`question_embeddings`). In `library_search` / `GET /api/search` both legs join the rank fusion as two more rankings (weight 1.25 against 1.0 for the text legs), keyed on the chunk id, so a chunk found by its text and by its questions is one hit; a hit that surfaced through a key carries `matched_question`. `questions=false` searches the text only. Keys are used whenever they exist, in `hybrid`, `bm25` and `dense` modes.
+
+- The question model is any OpenAI-compatible chat endpoint (`<base_url>/chat/completions`): the default endpoint is a local Ollama (`http://127.0.0.1:11434/v1`), the model name has to be set. Setting: `PUT /api/question-keys/settings` / `library_question_keys_settings` (`enabled`, `base_url`, `model`, `api_key`; the key comes back masked). With `enabled` on, every index run generates keys for the chunks that lack them, after embedding; with it off (the default) nothing is generated and nothing changes.
+- The model being down never fails or slows an index run beyond one probe: the chunks are marked `unavailable` (`chunk_question_state`) and retried on the next run or on demand; three consecutive failures stop the pass. Chunks shorter than 60 characters or with an unusable answer are marked `empty`. A chunk that is re-extracted loses its keys and is `pending` again.
+- Report: `GET /api/question-keys[?document=&collection=&probe=]` / `library_question_keys` (chunks with keys, empty, unavailable, pending; questions; questions waiting for a vector; whether the model answers). `GET /api/status` carries the same report under `question_keys` (without probing the model).
+- (Re)generate: `POST /api/question-keys/generate {document_id | collection_id, force?, max_chunks?}` / `library_generate_questions` (works with the setting off; `force` replaces existing keys; `max_chunks` caps the model calls per request and `remaining` says how many are left). `GET /api/question-keys/chunk/{id}` lists a chunk's questions.
+- Offline eval: `python scripts/eval_question_keys.py` indexes a small corpus with a scripted generator and prints recall@1 of question-shaped queries with and without the keys (currently 0.60 plain, 1.00 with keys on that corpus; `tests/test_question_keys.py` asserts it). It measures the mechanism, not a real model: the recall of a real model on a real library is not measured yet, which is why the setting is not on by default.
+
 ## Requirements
 
 - Windows 10/11 (also runs on Linux/macOS), Python 3.11+ (3.13 fine), Node 22 only to build the client.
@@ -58,6 +68,7 @@ Open http://127.0.0.1:5184, go to **Colecciones** and add a folder. The first st
 | `BORGES_OCR_LANG` | `es` | Language asked of the OCR engine. |
 | `BORGES_WATCH` | `1` | `0` disables folder watching. |
 | `BORGES_AUTOSTART` | `1` | `0` skips model preload and the initial reindex at startup. |
+| `BORGES_QUESTIONS_URL` / `BORGES_QUESTIONS_MODEL` / `BORGES_QUESTIONS_KEY` | local Ollama `http://127.0.0.1:11434/v1` / none / none | Defaults for the question keys model (below) when the setting stored in the database is empty. |
 
 ### Access from your phone (behind a tunnel)
 
@@ -132,7 +143,9 @@ Adding a folder (`POST /api/collections`, `library_add_collection`) accepts a pa
 - `GET/POST /api/collections`, `GET/PATCH/DELETE /api/collections/{id}`, `POST /api/collections/{id}/reindex[?force_ocr=true]`, `GET /api/collections/{id}/progress`
 - `GET /api/documents?collection&q&status&limit&cursor` (cursor = last id), `GET /api/documents/{id}` (metadata + outline), `GET /api/documents/{id}/text?page=|section=|unit=` (text with prev/next)
 - `GET /api/search?q&collection&mode=hybrid|bm25|dense&limit&source=folder|faustus|links&since=&until=` → `took_ms` and hits with `citation`, `snippet` (with `<mark>`), `chunk_id`, `document_id`, `page`, `section`, `line`, `date`, `project`, `source_kind`, `score`, `also`/`more` (collapsed hits from the same section); `q` must have 3+ characters; `since`/`until` are `YYYY-MM-DD` and only constrain dated (chat) hits
+  (`&questions=false` leaves the generated question keys out; hits found through one carry `matched_question`)
 - `GET /api/similar/{chunk_id}`, `GET /api/chunks/{chunk_id}`
+- `GET /api/question-keys`, `GET/PUT /api/question-keys/settings`, `POST /api/question-keys/generate`, `GET /api/question-keys/chunk/{chunk_id}` — the question keys (see above)
 - `POST /api/sources/links` — a Links Hoard source (`name`, `state`, `tag`, `poll_minutes`, and only without a hub `base_url` + `token`); `GET /api/sources?kind=faustus|links`
 - `GET/POST /api/sources`, `GET/PATCH/DELETE /api/sources/{id}`, `POST /api/sources/{id}/sync`, `GET /api/sources/{id}/status`, `GET /api/sources/faustus/recent-chats?limit&project` — the Faustus source (see above); config secrets come back masked
 - `GET /api/agent/tools` (catalog + instructions), `POST /api/agent/call` (Bearer token from `data/mcp-token`)
@@ -153,6 +166,9 @@ Adding a folder (`POST /api/collections`, `library_add_collection`) accepts a pa
 | `library_reindex` | Queue a non-destructive reindex of a collection (write); `force_ocr` re-reads every PDF page with OCR / vision. |
 | `library_add_collection` | Add a folder that must exist; idempotent by path (write). |
 | `chats_recent` | Most recently indexed Faustus conversations — title, date, project (limit?, project?). |
+| `library_question_keys` | Whether chunks have generated question keys: counts by state, questions, model reachable (document_id?, collection_id?). |
+| `library_generate_questions` | Generate or regenerate the question keys of a document or collection (write); skips and marks the chunks when the model is down (document_id \| collection_id, force?, max_chunks?). |
+| `library_question_keys_settings` | Read or change the question-keys setting: enabled, base_url, model, api_key (write). |
 | `embed_texts` | Family service: 1 to 512 texts (texts, kind? = `document`\|`query`, normalize?) → `{model, dim, vectors, normalized}`; waits up to 100 s for a model that is loading, then 503 `embedder_loading`; 400 `embeddings_disabled` / `too_many_texts`. Not capped. |
 | `embed_status` | Family service: `{backend, model, dim, state: disabled\|loading\|downloading\|ready\|error, error, load_seconds, ready}`. |
 
@@ -167,7 +183,7 @@ venv\Scripts\python -m pytest -q          # fake embedder, no network
 venv\Scripts\python -m pytest -m model    # downloads/loads the real model, checks a Spanish query
 ```
 
-Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), the scanned-PDF OCR routing against a fake family service, the folder policy, the family embedding tools, the plumbing, chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), the links source against a fake Links Hoard (paging, fingerprints, unfetched pages, filters, REST), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
+Covers extraction per format (fixtures generated with PyMuPDF, python-docx, ebooklib), the scanned-PDF OCR routing against a fake family service, the folder policy, the family embedding tools, the plumbing, chunking, incremental reindex, FTS + snippets, hybrid fusion, API via TestClient, agent auth, the folder watcher, the Faustus source against a fake Faustus ASGI app (login, token auth, loopback bypass, change detection, deletions, citations, source/date filters, `/api/sources` CRUD), the links source against a fake Links Hoard (paging, fingerprints, unfetched pages, filters, REST), the question keys (scripted generator, model down and recovering, force, reindex, API, MCP tools, offline recall@1 eval), and a subprocess end-to-end test that boots the app and talks to it through the MCP stdio bridge.
 
 ## Limits (v1)
 
@@ -175,6 +191,7 @@ Covers extraction per format (fixtures generated with PyMuPDF, python-docx, eboo
 - DOCX tables are flattened to `cell | cell` rows; images and footnotes are ignored.
 - Dense search keeps all vectors in memory (384 floats per chunk: ~150 MB per 100k chunks) and rebuilds the matrix after indexing changes.
 - The reranker stage is a hook, not an implementation.
+- Question keys are off by default and their gain on real libraries with a real model is not measured; there is no UI for them yet (API and MCP only), and the model has to be named by the user.
 - Faustus chat turns go through the same short-unit merge rule as everything else: a run of very short
   turns (< ~200 characters each) is merged into one section, so `turno N` in a citation is the section that
   ended up holding that passage, not necessarily every individual message's own number.

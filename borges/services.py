@@ -18,6 +18,7 @@ from .faustus_source import FaustusIndexer, FaustusScheduler
 from .indexer import Indexer
 from .links_source import LinksIndexer
 from .queries import Queries
+from .question_keys import QuestionKeys
 from .search import Search
 from .store import CollectionStore, DocumentStore
 from .watcher import Watcher
@@ -37,8 +38,10 @@ class Services:
         self.documents = DocumentStore(self.db)
         self.queries = Queries(self.db)
         self.embedder = make_embedder(config.embed_backend, config.model_name, config.model_cache, config.embed_providers)
-        self.search = Search(self.db, self.documents, self.queries, self.embedder, collections=self.collections)
-        self.indexer = Indexer(self.collections, self.documents, self.embedder, on_change=self.search.invalidate)
+        self.question_keys = QuestionKeys(self.db, self.embedder)
+        self.search = Search(self.db, self.documents, self.queries, self.embedder, collections=self.collections, question_keys=self.question_keys)
+        self.question_keys.on_change = self.search.invalidate
+        self.indexer = Indexer(self.collections, self.documents, self.embedder, on_change=self.search.invalidate, question_keys=self.question_keys)
         self.faustus_indexer = FaustusIndexer(self.collections, self.documents, self.indexer, on_change=self.search.invalidate)
         self.links_indexer = LinksIndexer(self.collections, self.documents, self.indexer, on_change=self.search.invalidate)
         self.worker = IndexWorker({"folder": self.indexer, "faustus": self.faustus_indexer, "links": self.links_indexer}, self.collections)
@@ -184,6 +187,7 @@ class Services:
             "disk_free_bytes": disk_free,
             "model": model,
             "chunks_pending_embedding": pending,
+            "question_keys": self.question_keys.status(probe=False),
             "reindex_needed": self.documents.count_stale(),
             "worker": self.worker.status(),
             "watching": self.watcher.watching(),
