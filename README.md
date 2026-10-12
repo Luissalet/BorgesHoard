@@ -176,6 +176,16 @@ Borges is the owner of the family's text embeddings: the other apps reach `embed
 
 The instructions shipped with the tools tell the assistant to answer only from retrieved text, to read the full passage with `library_read` before quoting, to always cite, and to say so when nothing relevant is found — and, for questions about past conversations or decisions ("what did we decide about X?"), to search with `source="faustus"` (or call `chats_recent`) and quote the `[chat «Title» · date · turno N]` citation.
 
+## Faustus assistant
+
+Once the shared Hoard Link launcher is installed, the app shows the family's Faustus panel (a floating button). The conversation, the model and the tools live in Faustus; this app only tells the panel what is open.
+
+- **Context per view.** The panel receives the page (`search`, `library`, `collections`, `sources`, `status`) and the objects open in it, with real ids: a `document` (title, kind, collection, relative path, pages, units, chunks, status, indexing date; in Library also the unit shown) and a `passage` (citation, document id, page, section, line, and a text preview of 240 characters). The collection chosen as a search filter counts too. Document text is never sent beyond that preview. Creation views give no object.
+- **Unsaved fields.** The panel asks for them with the `borges:context-request` window event. The forms `search-form`, `library-filter`, `collection-form`, `faustus-source-form` and `links-source-form` answer with the fields that differ from what they started with. A token or password typed in a source form makes it count as unsaved, but the secret itself never leaves the page.
+- **Refresh.** When the assistant finishes a turn the open view reloads in place (`hoard:copilot-turn-end` / `window.hoardCopilot.onTurnEnd`).
+- **Saving.** Forms send only the fields that changed. `PATCH /api/collections/{id}` and `PATCH /api/sources/{id}` merge only the fields sent (source settings merge by key and secrets are kept; `[]` or an empty value clears one). The collection patch now reads, merges and writes under one connection lock, so the user's form and an agent's tool call both survive.
+- **Tests.** `node --test client/src/copilot-context.test.mjs` and `python -m pytest tests/test_partial_updates.py`.
+
 ## Tests
 
 ```bat

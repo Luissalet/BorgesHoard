@@ -113,6 +113,16 @@ Herramientas: `library_search` (con `source='folder'|'faustus'`, `since`, `until
 
 La protección de peticiones, el formato de errores (con `code`), los ficheros PWA, el servidor de la interfaz (`index.html` nunca se guarda en caché), el puente MCP, las rutas del agente y la clase de base de datos son el código común de Hoard Link. Una segunda ejecución de `python -m borges` avisa de que ya hay una en marcha y termina sin tocar el token ni la base de datos; el token de `data/mcp-token` se crea una vez y se conserva. Al añadir una carpeta se acepta la ruta pegada con sus comillas y se rechaza la raíz de una unidad, la carpeta de usuario, las del sistema, las de configuración o secretos y la propia carpeta de datos. Las instrucciones que acompañan a las herramientas obligan al asistente a responder solo con texto recuperado, a leer el pasaje completo antes de citar, a citar siempre (documento y página/sección, o el chat y la fecha) y a decir claramente cuando no encuentra nada; para preguntas sobre conversaciones o decisiones pasadas («¿qué decidimos sobre X?») le dicen que busque con `source="faustus"` o llame a `chats_recent`.
 
+## Asistente de Faustus
+
+Con el lanzador compartido de Hoard Link instalado, la app muestra el panel de Faustus de la familia (un botón flotante). La conversación, el modelo y las herramientas viven en Faustus; esta app solo le dice al panel qué hay abierto.
+
+- **Contexto por vista.** El panel recibe la página (`search`, `library`, `collections`, `sources`, `status`) y los objetos abiertos en ella, con ids reales: un `document` (título, tipo, colección, ruta relativa, páginas, unidades, fragmentos, estado, fecha de indexado; en Biblioteca también la unidad mostrada) y un `passage` (cita, id del documento, página, sección, línea y una vista previa del texto de 240 caracteres). También cuenta la colección elegida como filtro de búsqueda. Del texto de los documentos no se envía nada más allá de esa vista previa. Las vistas de creación no dan objeto.
+- **Campos sin guardar.** El panel los pide con el evento de ventana `borges:context-request`. Los formularios `search-form`, `library-filter`, `collection-form`, `faustus-source-form` y `links-source-form` responden con los campos que difieren de los iniciales. Un token o contraseña escrito en un formulario de fuente lo hace contar como sin guardar, pero el secreto en sí nunca sale de la página.
+- **Refresco.** Cuando el asistente termina un turno, la vista abierta se recarga en el sitio (`hoard:copilot-turn-end` / `window.hoardCopilot.onTurnEnd`).
+- **Guardado.** Los formularios envían solo los campos que han cambiado. `PATCH /api/collections/{id}` y `PATCH /api/sources/{id}` fusionan solo los campos enviados (los ajustes de una fuente se fusionan por clave y los secretos se conservan; `[]` o un valor vacío borra uno). El parche de colección lee, fusiona y escribe ahora bajo un único bloqueo de la conexión, de modo que sobreviven tanto el formulario del usuario como la llamada de una herramienta de agente.
+- **Pruebas.** `node --test client/src/copilot-context.test.mjs` y `python -m pytest tests/test_partial_updates.py`.
+
 ## Pruebas
 
 ```bat
