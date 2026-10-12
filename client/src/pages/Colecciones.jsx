@@ -3,13 +3,16 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Empty, PageHeader, Progress, Switch } from "../components/ui.jsx";
 import { PHASE_LABEL, when } from "../format.js";
+import { editorContext } from "../copilot-context.js";
+import { useContextProvider, useCopilotRefresh } from "../copilot-hooks.js";
 
 const splitGlobs = (text) => text.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+const EMPTY_FORM = { path: "", name: "", include: "", exclude: "", watch: false, code: false };
 
 export default function Colecciones() {
   const { status, act } = useApp();
   const [collections, setCollections] = useState(null);
-  const [form, setForm] = useState({ path: "", name: "", include: "", exclude: "", watch: false, code: false });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [showExclude, setShowExclude] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState({});
 
@@ -18,13 +21,16 @@ export default function Colecciones() {
     load();
   }, [status]); // status polls every few seconds → progress bars follow
 
+  useCopilotRefresh(load);
+  useContextProvider(() => editorContext("collection-form", null, EMPTY_FORM, form));
+
   const submit = async (e) => {
     e.preventDefault();
     const body = { path: form.path.trim(), name: form.name.trim(), include: splitGlobs(form.include), watch: form.watch, code: form.code };
     if (showExclude) body.exclude = splitGlobs(form.exclude);
     const created = await act(() => api.addCollection(body), "Carpeta añadida: la indexación ha empezado.");
     if (created) {
-      setForm({ path: "", name: "", include: "", exclude: "", watch: false, code: false });
+      setForm(EMPTY_FORM);
       load();
     }
   };

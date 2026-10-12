@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
+import { useCopilotRefresh } from "./copilot-hooks.js";
 import { Toast } from "./components/ui.jsx";
 import { MODEL_STATE } from "./format.js";
 import Buscar from "./pages/Buscar.jsx";
@@ -57,6 +58,7 @@ export default function App() {
       setError(e.message);
     }
   }, []);
+  useCopilotRefresh(refresh);
   useEffect(() => {
     refresh();
     const timer = setInterval(refresh, 4000);

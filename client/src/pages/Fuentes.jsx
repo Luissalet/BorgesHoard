@@ -3,9 +3,12 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Empty, PageHeader, Progress, Switch } from "../components/ui.jsx";
 import { PHASE_LABEL, when } from "../format.js";
+import { editorContext } from "../copilot-context.js";
+import { useContextProvider, useCopilotRefresh } from "../copilot-hooks.js";
 
 const splitProjects = (text) => text.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
 const EMPTY_FORM = { base_url: "", name: "", username: "", password: "", token: "", include_projects: "", poll_minutes: 10 };
+const FAUSTUS_FORM_BASE = { base_url: "", name: "", include_projects: "", poll_minutes: 10 };
 const EMPTY_LINKS = { name: "Mis enlaces", state: "all", tag: "", poll_minutes: 30 };
 const STATE_LABEL = { all: "todos", unread: "pendientes", read: "leídos", archived: "archivados" };
 
@@ -20,6 +23,15 @@ export default function Fuentes() {
   useEffect(() => {
     load();
   }, [status]);
+
+  useCopilotRefresh(load);
+  // Token, user name and password are never part of what the assistant is told; typing one only marks the form as dirty.
+  useContextProvider(() => {
+    const { token, username, password, ...open } = form;
+    return editorContext("faustus-source-form", null, { ...FAUSTUS_FORM_BASE, auth: "token" }, { ...open, auth: useToken ? "token" : "user_password" },
+      Boolean(token || username || password));
+  });
+  useContextProvider(() => editorContext("links-source-form", null, EMPTY_LINKS, linksForm));
 
   const submit = async (e) => {
     e.preventDefault();

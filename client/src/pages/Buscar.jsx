@@ -3,9 +3,12 @@ import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import Passage from "../components/Passage.jsx";
 import { Empty, PageHeader, Snippet, TypeIcon } from "../components/ui.jsx";
+import { editorContext } from "../copilot-context.js";
+import { useContextProvider, useCopilotRefresh, useViewState } from "../copilot-hooks.js";
 import { queryTerms } from "../format.js";
 
 const MIN_CHARS = 3;
+const SEARCH_INITIAL = { q: "", mode: "hybrid", collection: "", source: "" };
 
 const MODES = [
   { id: "hybrid", label: "Híbrida" },
@@ -48,6 +51,15 @@ export default function Buscar() {
       setLoading(false);
     }
   };
+
+  // After an assistant turn: refresh the collection list and re-run the search on screen; the open passage and the box stay as they are.
+  useCopilotRefresh(() => {
+    api.collections().then((r) => setCollections(r.collections)).catch(() => {});
+    if (q.trim().length >= MIN_CHARS) run();
+  });
+  useContextProvider(() => editorContext("search-form", null, SEARCH_INITIAL, { q, mode, collection, source }));
+  useViewState("collection", collection || null);
+  useViewState("passage", open ? { chunk_id: open.chunk_id, document_id: open.document_id, citation: open.citation } : null);
 
   const onChange = (value) => {
     setQ(value);

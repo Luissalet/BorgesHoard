@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { PageHeader, TypeIcon } from "../components/ui.jsx";
+import { useCopilotRefresh, useViewState } from "../copilot-hooks.js";
 import { KIND_LABEL, bytes, unitLabel, when } from "../format.js";
 
 /** Document view: metadata, outline (pages/sections) and the text of the selected unit. */
@@ -22,6 +23,19 @@ export default function Documento({ param, query }) {
       })
       .catch((e) => setError(e.message));
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After an assistant turn: reload the document and the unit on screen without clearing them (no flash, same place).
+  useCopilotRefresh(() => {
+    const unitId = unit?.id;
+    api.document(id)
+      .then((d) => {
+        setDoc(d);
+        setError(null);
+        return unitId ? api.text(id, { unit: unitId }).then(setUnit).catch(() => {}) : null;
+      })
+      .catch((e) => setError(e.message));
+  });
+  useViewState("unit", unit ? { id: unit.id, label: unitLabel(unit) } : null);
 
   const show = (unitId) => {
     setUnit(null);

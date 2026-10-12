@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useApp } from "../App.jsx";
 import { Empty, PageHeader, TypeIcon } from "../components/ui.jsx";
+import { editorContext } from "../copilot-context.js";
+import { useContextProvider, useCopilotRefresh } from "../copilot-hooks.js";
 import { KIND_LABEL, bytes, when } from "../format.js";
 
 export default function Biblioteca() {
@@ -24,6 +26,8 @@ export default function Biblioteca() {
   useEffect(() => {
     load();
   }, [q, status?.counts?.documents]); // eslint-disable-line react-hooks/exhaustive-deps
+  useCopilotRefresh(load);
+  useContextProvider(() => editorContext("library-filter", null, { q: "" }, { q }));
 
   const groups = collections.map((c) => ({ collection: c, docs: documents.filter((d) => d.collection_id === c.id) })).filter((g) => g.docs.length || !q);
 

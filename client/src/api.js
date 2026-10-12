@@ -23,6 +23,7 @@ async function request(method, path, { params, body } = {}) {
 export const api = {
   status: () => request("GET", "/api/status"),
   collections: () => request("GET", "/api/collections"),
+  collection: (id) => request("GET", `/api/collections/${id}`),
   addCollection: (body) => request("POST", "/api/collections", { body }),
   updateCollection: (id, patch) => request("PATCH", `/api/collections/${id}`, { body: patch }),
   removeCollection: (id) => request("DELETE", `/api/collections/${id}`),
