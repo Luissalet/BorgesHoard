@@ -126,13 +126,16 @@ class CollectionStore:
 
     def update_config(self, collection_id: int, patch: dict) -> Collection | None:
         """Merge `patch` into a source's stored config (e.g. Faustus base_url/credentials/poll_minutes)."""
-        collection = self.get(collection_id)
-        if collection is None:
-            return None
-        merged = {**collection.config, **{k: v for k, v in patch.items() if v is not None}}
-        with self.db.transaction() as conn:
-            conn.execute("UPDATE collections SET config = ? WHERE id = ?", (json.dumps(merged), collection_id))
-        return self.get(collection_id)
+        # Read, merge and write under the one re-entrant connection lock: two patches of different fields
+        # (the user's form and an agent's tool call) both survive instead of the later one erasing the earlier.
+        with self.db.lock:
+            collection = self.get(collection_id)
+            if collection is None:
+                return None
+            merged = {**collection.config, **{k: v for k, v in patch.items() if v is not None}}
+            with self.db.transaction() as conn:
+                conn.execute("UPDATE collections SET config = ? WHERE id = ?", (json.dumps(merged), collection_id))
+            return self.get(collection_id)
 
     def set_sync_status(self, collection_id: int, status: dict) -> None:
         with self.db.transaction() as conn:
