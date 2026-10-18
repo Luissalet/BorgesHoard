@@ -151,7 +151,7 @@ def create_runtime(*, name, product, root, data_dir, specs, factory, port):
         if request.url.path.startswith('/api/copilot/'):
             referer = urlsplit(request.headers.get('referer', ''))
             key = referer.path.strip('/').split('/', 1)[0]
-            if referer.netloc == request.url.netloc and key in modules:
+            if referer.scheme == request.url.scheme and referer.netloc == request.url.netloc and key in modules:
                 from .native_response import NativeResponse
                 return NativeResponse(modules[key], request.url.path.lstrip('/'),
                                       name=name, product=product, on_quit=persist)
