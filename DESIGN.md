@@ -1,219 +1,168 @@
 ---
-name: Borges's Hoard
-description: Una biblioteca personal que responde dónde leíste o escribiste algo, con la cita exacta.
+name: "Borges's Hoard"
+description: "Sistema visual construido del panel Funciones, con las interfaces nativas conservadas."
 colors:
-  accent: "#7a2e2e"
-  accent-hover: "#5f2222"
-  accent-soft: "#f3e4e2"
-  ink: "#2b2523"
-  muted: "#7a6f6b"
-  paper: "#fbf9f6"
-  white: "#ffffff"
-  line: "#e9e2dc"
-  soft: "#f3eeea"
-  sidebar: "#f5f0eb"
-  nav-active: "#ecdcd8"
-  nav-active-ink: "#5f2222"
-  nav-hover: "#eee7e1"
-  field-line: "#d9cfc7"
-  field-ink: "#2f2826"
-  placeholder: "#9a8f89"
-  supporting-ink: "#6e645f"
-  focus: "#a04a4a"
-  button-line: "#ddd3cb"
-  panel: "#f6f2ee"
-  ok-bg: "#e5efe4"
-  ok-ink: "#2f5f3a"
-  warn-bg: "#f8ecd2"
-  warn-ink: "#7a5a17"
-  danger-bg: "#f9e8e6"
-  danger-ink: "#8a2f26"
-  danger-line: "#eac6c1"
-  bar-bg: "#e8dfd8"
-  highlight: "#f7e7a7"
-  quote: "#6b3a3a"
+  deep: "#1c1514"
+  surface: "#241c1b"
+  elevated: "#2f2525"
+  border: "#433635"
+  border-hover: "#6a5958"
+  text: "#ece2e1"
+  text-muted: "#beb5b4"
+  text-dim: "#a69c9b"
+  accent: "#d9665d"
+  accent-strong: "#e1857e"
+  accent-ink: "#1b1413"
+  accent-soft: "rgba(217, 102, 93, 0.14)"
+  danger: "#ee8b80"
 typography:
   headline:
-    fontFamily: "Segoe UI, system-ui, sans-serif"
+    fontFamily: "'Cinzel', 'Iowan Old Style', Charter, Georgia, 'Liberation Serif', 'Noto Serif', 'Times New Roman', serif"
     fontSize: "30px"
     fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "-0.015em"
-  title:
-    fontFamily: "Segoe UI, system-ui, sans-serif"
+    lineHeight: 1.15
+    letterSpacing: "0.005em"
+  brand:
+    fontFamily: "'Cinzel', 'Iowan Old Style', Charter, Georgia, 'Liberation Serif', 'Noto Serif', 'Times New Roman', serif"
     fontSize: "16px"
+    fontWeight: 700
+    lineHeight: 1.5
+  title:
+    fontFamily: "'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Liberation Sans', Arial, sans-serif"
+    fontSize: "19px"
     fontWeight: 600
-    lineHeight: 1.35
   body:
-    fontFamily: "Segoe UI, system-ui, sans-serif"
+    fontFamily: "'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Liberation Sans', Arial, sans-serif"
     fontSize: "14px"
-    lineHeight: 1.65
-  passage:
-    fontFamily: "Georgia, Times New Roman, serif"
-    fontSize: "15px"
-    lineHeight: 1.7
-  citation:
-    fontFamily: "Georgia, serif"
-    fontSize: "14px"
-    fontWeight: 600
-  button:
-    fontFamily: "Segoe UI, system-ui, sans-serif"
-    fontSize: "13px"
-    fontWeight: 600
-    lineHeight: "18px"
+    lineHeight: 1.6
   label:
-    fontFamily: "Segoe UI, system-ui, sans-serif"
-    fontSize: "12px"
-    fontWeight: 600
-  code:
-    fontFamily: "Consolas, monospace"
+    fontFamily: "'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Liberation Sans', Arial, sans-serif"
+    fontSize: "13px"
+  detail:
+    fontFamily: "'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Liberation Sans', Arial, sans-serif"
     fontSize: "12px"
 rounded:
-  badge: "5px"
-  field: "6px"
-  control: "7px"
-  panel: "8px"
-  search: "9px"
+  control: "6px"
+  icon: "8px"
+  switch: "14px"
 spacing:
-  control-gap: "8px"
-  action-gap: "10px"
-  page-gutter: "40px"
-  page-gutter-mobile: "16px"
+  control-gap: "10px"
+  row-block: "22px"
+  page-gutter: "48px"
+  page-gutter-mobile: "22px"
 components:
-  button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.white}"
-    typography: "{typography.button}"
-    rounded: "{rounded.control}"
-    padding: "8px 15px"
   button-secondary:
-    backgroundColor: "{colors.white}"
-    textColor: "{colors.ink}"
-    typography: "{typography.button}"
+    backgroundColor: "transparent"
+    textColor: "{colors.text}"
     rounded: "{rounded.control}"
-    padding: "8px 15px"
-  field:
-    backgroundColor: "{colors.white}"
-    textColor: "{colors.field-ink}"
-    rounded: "{rounded.field}"
-    padding: "8px 11px"
+    padding: "10px 16px"
+  navigation-active:
+    backgroundColor: "{colors.elevated}"
+    textColor: "{colors.accent}"
+    rounded: "{rounded.control}"
+    padding: "10px 12px"
+  module-row:
+    textColor: "{colors.text}"
+    padding: "22px 0"
+  switch-track:
+    backgroundColor: "{colors.border}"
+    rounded: "{rounded.switch}"
+    width: "42px"
+    height: "24px"
   search-field:
-    backgroundColor: "{colors.white}"
-    rounded: "{rounded.search}"
-    padding: "12px 16px"
-    fontSize: "16px"
-  hit:
-    backgroundColor: "{colors.white}"
-    rounded: "{rounded.panel}"
-    padding: "14px 16px"
-  passage-panel:
-    backgroundColor: "{colors.white}"
-    rounded: "{rounded.panel}"
-    sticky: "top 16px on desktop; full-screen overlay under 768px"
-  chip:
-    typography: "10px / 600 / uppercase"
-    rounded: "{rounded.badge}"
-    padding: "2px 6px"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.control}"
+    padding: "10px 12px"
 ---
-
 # Design System: Borges's Hoard
 
 ## Overview
 
-**Creative North Star: "Sala de lectura"**
+**Creative North Star: "La familia Hoard existente"**
 
-Una biblioteca privada, silenciosa, donde cada respuesta llega con su cita. Papel cálido, tinta oscura y un acento sangre de toro (oxblood) reservado a la acción principal y a las citas. Las citas y los pasajes se componen en serifa (Georgia) para distinguir lo que dice el documento de lo que dice la interfaz; todo lo demás va en Segoe UI. La interfaz está en español de España.
+La identidad vigente de Borges's Hoard pertenece a la familia Hoard: fondos oscuros teñidos, acento propio, icono existente, títulos Cinzel y texto Source Sans 3. El panel Funciones prolonga esa identidad sin sustituir la presentación de las herramientas nativas. Esta actualización combina el panel construido con los patrones anteriores que siguen aplicando en sus pantallas; los tokens normativos de cabecera describen el panel Funciones, no una recoloración de todas las vistas.
+
+La interfaz operativa prioriza el nombre de la función, una explicación breve y controles con estado escrito. La profundidad procede del contraste entre fondo, lateral y selección. La marca de Faustus conserva su identidad familiar independiente; no se usa para recolorear el producto.
 
 **Key Characteristics:**
 
-- Un buscador grande y un panel de pasaje a su derecha: la pregunta y la prueba se ven a la vez.
-- La cita (`«Título», p. 12` / `archivo.md § Sección`) es el elemento más visible de cada resultado.
-- Resaltado de coincidencias en amarillo papel; el pasaje concreto del resultado lleva un fondo crema.
-- Estados escritos (al día, extrayendo, calculando embeddings, error) en lugar de iconos animados.
+- Icono propio conservado y navegación familiar.
+- Jerarquía tipográfica serifa/sans, con controles y estados legibles.
+- Filas separadas por bordes y profundidad tonal contenida.
 
 ## Colors
 
 ### Primary
 
-- `accent` #7a2e2e (oxblood) para el botón primario, el modo de búsqueda activo, la barra de progreso y la marca «B».
-- `accent-hover` #5f2222 y `accent-soft` #f3e4e2 (iconos de tipo de archivo, chip de fase).
-- `quote` #6b3a3a para las citas.
+**Coral de biblioteca**: `accent` identifica enlaces, marca y selección; `accent-strong` responde al hover. `accent-ink` es el texto o pulgar sobre el acento y `accent-soft` el fondo de selección de texto. Sus valores normativos están en la cabecera, extraídos de `hoard-theme.css`.
 
 ### Neutral
 
-- `paper` #fbf9f6 fondo; `white` paneles y filas; `sidebar` #f5f0eb; `panel` #f6f2ee formularios.
-- `ink` #2b2523 texto; `supporting-ink` #6e645f ayudas; `line` #e9e2dc bordes.
-- Semánticos: `ok` verde apagado (al día, modelo listo), `warn` ámbar (necesita OCR, modelo cargando), `danger` (errores de extracción, quitar).
-- `highlight` #f7e7a7 para `<mark>`; el pasaje del resultado usa #fdf3dc.
+`deep` es el lienzo; `surface`, el lateral y los campos; `elevated`, la navegación seleccionada y las respuestas de hover. `border` y `border-hover` separan y responden a interacción. `text`, `text-muted` y `text-dim` ordenan contenido, ayudas y procedencia. `danger` comunica errores junto a texto explícito.
+
+**The Product Accent Rule.** El acento propio identifica la aplicación, la navegación activa y el estado encendido; los párrafos permanecen en los tonos de texto.
 
 ## Typography
 
-**Body Font:** Segoe UI (system-ui de respaldo). **Pasajes y citas:** Georgia. Consolas solo para nombres de modelo y rutas.
+**Display Font:** Cinzel, con los respaldos serif del tema familiar.
+**Body Font:** Source Sans 3, con los respaldos sans del tema familiar. Ambas fuentes principales se alojan localmente.
 
-- **Headline:** título de página 30px (26px en móvil).
-- **Title:** títulos de sección 16px seminegrita.
-- **Body:** 14px; ayudas y metadatos 12px; chips 10px mayúsculas.
-- **Passage:** 15px/1.7 con `white-space: pre-wrap` para conservar párrafos y saltos de línea originales.
-- **Citation:** 14px seminegrita en `quote`.
+La serifa identifica marca y encabezado de página; la sans organiza explicación, navegación y controles. La escala del panel parte de 15px en la raíz. El encabezado usa la variante `headline`; la marca, `brand`; los nombres de módulo, `title`; las descripciones, `body`; estados y acciones, `label`; las rutas desplegables, `detail`. El cuerpo de los párrafos mantiene interlínea 1.6 y anchura máxima de 72ch. En móvil, encabezado 27px y marca 15px; la descripción de módulo baja a 13px bajo 650px.
 
 ## Layout
 
-Escritorio: índice fijo de 224px + contenido flexible (`min-width: 0`), márgenes de 40px. Buscar usa una cuadrícula de dos columnas cuando hay un pasaje abierto: resultados (flexible) y panel de pasaje (320px–44%), pegajoso a 16px de arriba y con altura máxima `100dvh - 2rem` y desplazamiento propio.
+El escritorio combina un lateral fijo en el flujo (220px), pegajoso al borde superior y de una altura de viewport, con contenido flexible `minmax(0, 1fr)`. El contenido tiene anchura máxima de 1140px y relleno 48px/48px/44px. Bajo 1050px usa 38px/28px. Las filas de módulo distribuyen texto flexible y controles a la derecha; los separadores atraviesan el ancho de contenido.
 
-Biblioteca lista filas agrupadas por colección; Documento usa índice de 260px + artículo. Colecciones apila formulario y tarjetas. Estado usa cuatro cifras en una fila.
-
-- Hasta 768px: el índice pasa a barra superior con navegación horizontal desplazable; márgenes de 16px; el panel de pasaje ocupa toda la pantalla (`position: fixed`) con botón «Cerrar»; las columnas de metadatos de la biblioteca se ocultan salvo los avisos (OCR, error).
-- No hay desplazamiento horizontal de página a 390px: todo contenedor de cuadrícula lleva `min-width: 0`.
+Bajo 720px el lateral pasa a cabecera horizontal estática, oculta su navegación vertical y conserva marca y enlace al Hub. El contenido usa 30px/22px. Bajo 650px la cabecera del contenido apila el botón, la procedencia pasa bajo el nombre y los controles se ordenan verticalmente. El resto continúa por desplazamiento normal; las rutas largas admiten ruptura de línea. Los controles de interruptor tienen altura mínima de 44px.
 
 ## Elevation & Depth
 
-Plano por defecto. Sombras solo en el aviso flotante (toast). El resultado seleccionado se marca con borde `accent` y un anillo de 1px, no con sombra.
+El panel es plano, con superficies tonales, bordes finos y sin sombras en filas ni pulgar del interruptor. El foco de teclado usa un contorno de acento de 3px separado 4px; no depende de profundidad. Los componentes nativos conservan sus excepciones funcionales, como avisos flotantes. La transición de pulgar es breve (0.16s ease-out) y desaparece con `prefers-reduced-motion: reduce`.
 
 ## Shapes
 
-Campos 6px, controles 7px, paneles 8px, el buscador principal 9px, chips 5px. Bordes de 1px. Iconos SVG de línea; los tipos de archivo son monogramas de texto (PDF, DOC, MD, EPUB, CHAT…) sobre `accent-soft`. Sin imágenes raster. Un resultado de chat de Faustus añade además un chip con la fecha de la conversación junto a la cita.
+Controles y navegación tienen esquinas suavizadas (`control`); el icono propio conserva su archivo y marco (`icon`). El interruptor es una pista de 42×24px con pulgar circular de 18px y desplazamiento de 18px. Bordes de separación de 1px. Los iconos de navegación son SVG de línea; el icono de producto es el raster existente, sin sustituirlo por un glifo.
 
 ## Components
 
 ### Buttons
 
-Primario (oxblood), secundario (blanco con borde), peligro (rojo suave: «Quitar»). Altura mínima 38px; variante `btn-sm` de 30px para acciones de fila. Enlaces de acción (`btn-link`) en `accent`.
-
-### Inputs / Fields
-
-Etiqueta encima, ayuda debajo. El buscador principal es más grande (16px, 12px de relleno) y recibe el foco al abrir la página. El selector de modo es un control segmentado (Híbrida / Palabras / Significado); «Significado» se deshabilita hasta que el modelo está listo.
+Botón secundario transparente con texto principal, borde tonal y relleno 10px/16px. Hover usa la superficie elevada y el borde de hover. El estado deshabilitado reduce opacidad y mantiene su etiqueta. Los enlaces de apertura usan el acento; deshabilitados pasan al tono atenuado y dejan de recibir clics.
 
 ### Navigation
 
-Cinco secciones: Buscar, Biblioteca, Colecciones, Fuentes, Estado. Rutas por hash (`#/buscar`, `#/biblioteca/12`). La activa usa `aria-current` con fondo `nav-active`. Fuentes reutiliza el patrón de tarjeta de Colecciones (formulario arriba, tarjetas con progreso abajo) para conectar un Faustus: URL, token o usuario/contraseña, proyectos a incluir, intervalo de sondeo, activar/desactivar, «Sincronizar ahora».
+Entradas de 14px con icono SVG de 18px, relleno 10px/12px y esquinas de control. La activa usa superficie elevada, acento y peso 600; hover usa texto principal. La marca usa el icono existente de 42px, reducido a 36px en móvil. El enlace al Hub se sitúa al pie del lateral en escritorio y en cabecera en móvil.
 
-### Chips
+### Module rows and switches
 
-Tipo de archivo, fase de indexación, «sin texto · necesita OCR» (warn), «error» (danger). Texto en mayúsculas de 10px.
+Cada función ocupa una fila con nombre, procedencia, descripción, ubicación desplegable y controles. Los títulos usan 19px/600. El interruptor mantiene texto de estado y `aria-checked`; apagado usa borde tonal y pulgar de texto, encendido pista de acento y pulgar de tinta de acento. No se diferencia el estado sólo por el color.
 
-### Hits and Passage
+### Data location and status
 
-Cada resultado es un botón con: monograma de tipo, cita (serifa), título/ruta/colección en ayuda, y fragmento con `<mark>`. Al pulsar se abre el panel de pasaje con la página o sección completa, el fragmento del resultado sobre fondo crema, los términos resaltados, navegación Anterior/Siguiente y «¿Dónde más hablo de esto?» (pasajes parecidos).
+La ubicación usa `details` nativo y código de 12px con ruptura de rutas. El estado global usa texto de 14px y un indicador circular pequeño. Errores usan tono de peligro y semántica de alerta, conservando el mensaje.
 
-### Progress and errors
+### Biblioteca nativa conservada
 
-La colección muestra fase escrita, contador (archivos o pasajes) y barra en `accent` mientras trabaja; al terminar, resumen (cambiados, eliminados, embeddings, segundos). Los errores por archivo se despliegan en una lista sobre fondo `danger`.
+El buscador nativo mantiene resultados junto al panel de pasaje: la cita y la prueba se leen a la vez. Las citas y pasajes usan Georgia; el pasaje conserva párrafos y saltos de línea. El índice nativo conserva Buscar, Biblioteca, Colecciones, Fuentes y Estado, con rutas por hash y estado activo accesible. Fuentes comparte el formulario y las filas de colección, con progreso y sincronización explícita. La lista conserva el tipo de archivo y los avisos «sin texto · necesita OCR» y «error».
 
-### Empty states
+El panel de pasaje sigue siendo pegajoso en escritorio y una superficie de pantalla completa con «Cerrar» bajo su punto de corte nativo (768px). El documento conserva índice y artículo; la biblioteca agrupa por colección. Los resultados seleccionados usan borde/anillo; el toast es la excepción flotante. No truncar la página o sección de la cita para hacer sitio al título. El resaltado de coincidencias y el fondo de pasaje distinguen evidencia de interfaz. Estos patrones siguen vigentes; los antiguos tokens de papel claro y Segoe UI del DESIGN anterior no son la autoridad del nuevo panel oscuro.
 
-Un título, una frase y una única acción («Añadir una carpeta») que lleva a Colecciones.
+### Búsqueda compartida
+
+Etiqueta visible, campo flexible y botón Buscar, con ayuda debajo. Los resultados mantienen el origen y sus citas. El campo usa superficie tonal, borde fino y foco común; los controles de automatismos son casillas nativas con acento del producto, distintas del interruptor de cada motor.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** mostrar siempre la cita antes que el fragmento; la cita es la respuesta.
-- **Do** mantener el pasaje en serifa y con saltos de línea originales.
-- **Do** escribir los estados del modelo y del indexador; nunca ocultar que la búsqueda es solo por palabras mientras se descarga el modelo.
-- **Do** conservar «sin texto · necesita OCR» visible: un documento listado no es un documento buscable.
+- **Do** conservar el icono existente y las familias locales Cinzel y Source Sans 3.
+- **Do** acompañar cada interruptor con su estado escrito y un nombre accesible.
+- **Do** mantener el borde de fila y el foco visibles en el tema oscuro.
+- **Do** respetar los patrones nativos conservados al extender sus pantallas.
 
 ### Don't:
 
-- **Don't** convertir los resultados en tarjetas elevadas ni añadir sombras al panel de pasaje.
-- **Don't** usar el acento para texto largo; reservarlo a acciones, citas y estado activo.
-- **Don't** truncar la cita: si no cabe, cortar el título con puntos suspensivos pero conservar «p. N» o «§ Sección».
+- **Don’t** sustituir la identidad del Hoard por un tema genérico.
+- **Don’t** usar el acento para párrafos largos.
+- **Don’t** convertir las filas de Funciones en tarjetas decorativas elevadas.

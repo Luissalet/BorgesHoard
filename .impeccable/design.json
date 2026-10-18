@@ -1,0 +1,296 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T21:15:39.332178+00:00",
+  "title": "Design System: Borges's Hoard",
+  "extensions": {
+    "colorMeta": {
+      "deep": {
+        "role": "neutral",
+        "displayName": "Deep",
+        "tonalRamp": [
+          "oklch(15% 0.01166 27.62)",
+          "oklch(26% 0.01166 27.62)",
+          "oklch(37% 0.01166 27.62)",
+          "oklch(48% 0.01166 27.62)",
+          "oklch(59% 0.01166 27.62)",
+          "oklch(70% 0.01166 27.62)",
+          "oklch(82% 0.01166 27.62)",
+          "oklch(95% 0.01166 27.62)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.01279 26.43)",
+          "oklch(26% 0.01279 26.43)",
+          "oklch(37% 0.01279 26.43)",
+          "oklch(48% 0.01279 26.43)",
+          "oklch(59% 0.01279 26.43)",
+          "oklch(70% 0.01279 26.43)",
+          "oklch(82% 0.01279 26.43)",
+          "oklch(95% 0.01279 26.43)"
+        ]
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Elevated",
+        "tonalRamp": [
+          "oklch(15% 0.01516 18.11)",
+          "oklch(26% 0.01516 18.11)",
+          "oklch(37% 0.01516 18.11)",
+          "oklch(48% 0.01516 18.11)",
+          "oklch(59% 0.01516 18.11)",
+          "oklch(70% 0.01516 18.11)",
+          "oklch(82% 0.01516 18.11)",
+          "oklch(95% 0.01516 18.11)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15% 0.01872 23.26)",
+          "oklch(26% 0.01872 23.26)",
+          "oklch(37% 0.01872 23.26)",
+          "oklch(48% 0.01872 23.26)",
+          "oklch(59% 0.01872 23.26)",
+          "oklch(70% 0.01872 23.26)",
+          "oklch(82% 0.01872 23.26)",
+          "oklch(95% 0.01872 23.26)"
+        ]
+      },
+      "border-hover": {
+        "role": "neutral",
+        "displayName": "Border hover",
+        "tonalRamp": [
+          "oklch(15% 0.02243 21.95)",
+          "oklch(26% 0.02243 21.95)",
+          "oklch(37% 0.02243 21.95)",
+          "oklch(48% 0.02243 21.95)",
+          "oklch(59% 0.02243 21.95)",
+          "oklch(70% 0.02243 21.95)",
+          "oklch(82% 0.02243 21.95)",
+          "oklch(95% 0.02243 21.95)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15% 0.01102 24.33)",
+          "oklch(26% 0.01102 24.33)",
+          "oklch(37% 0.01102 24.33)",
+          "oklch(48% 0.01102 24.33)",
+          "oklch(59% 0.01102 24.33)",
+          "oklch(70% 0.01102 24.33)",
+          "oklch(82% 0.01102 24.33)",
+          "oklch(95% 0.01102 24.33)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Text muted",
+        "tonalRamp": [
+          "oklch(15% 0.01037 25.10)",
+          "oklch(26% 0.01037 25.10)",
+          "oklch(37% 0.01037 25.10)",
+          "oklch(48% 0.01037 25.10)",
+          "oklch(59% 0.01037 25.10)",
+          "oklch(70% 0.01037 25.10)",
+          "oklch(82% 0.01037 25.10)",
+          "oklch(95% 0.01037 25.10)"
+        ]
+      },
+      "text-dim": {
+        "role": "neutral",
+        "displayName": "Text dim",
+        "tonalRamp": [
+          "oklch(15% 0.01184 24.38)",
+          "oklch(26% 0.01184 24.38)",
+          "oklch(37% 0.01184 24.38)",
+          "oklch(48% 0.01184 24.38)",
+          "oklch(59% 0.01184 24.38)",
+          "oklch(70% 0.01184 24.38)",
+          "oklch(82% 0.01184 24.38)",
+          "oklch(95% 0.01184 24.38)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Coral de biblioteca",
+        "tonalRamp": [
+          "oklch(15% 0.14633 26.45)",
+          "oklch(26% 0.14633 26.45)",
+          "oklch(37% 0.14633 26.45)",
+          "oklch(48% 0.14633 26.45)",
+          "oklch(59% 0.14633 26.45)",
+          "oklch(70% 0.14633 26.45)",
+          "oklch(82% 0.14633 26.45)",
+          "oklch(95% 0.14633 26.45)"
+        ]
+      },
+      "accent-strong": {
+        "role": "primary",
+        "displayName": "Accent strong",
+        "tonalRamp": [
+          "oklch(15% 0.11429 24.96)",
+          "oklch(26% 0.11429 24.96)",
+          "oklch(37% 0.11429 24.96)",
+          "oklch(48% 0.11429 24.96)",
+          "oklch(59% 0.11429 24.96)",
+          "oklch(70% 0.11429 24.96)",
+          "oklch(82% 0.11429 24.96)",
+          "oklch(95% 0.11429 24.96)"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Accent ink",
+        "tonalRamp": [
+          "oklch(15% 0.01173 27.64)",
+          "oklch(26% 0.01173 27.64)",
+          "oklch(37% 0.01173 27.64)",
+          "oklch(48% 0.01173 27.64)",
+          "oklch(59% 0.01173 27.64)",
+          "oklch(70% 0.01173 27.64)",
+          "oklch(82% 0.01173 27.64)",
+          "oklch(95% 0.01173 27.64)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Accent soft"
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15% 0.12258 27.14)",
+          "oklch(26% 0.12258 27.14)",
+          "oklch(37% 0.12258 27.14)",
+          "oklch(48% 0.12258 27.14)",
+          "oklch(59% 0.12258 27.14)",
+          "oklch(70% 0.12258 27.14)",
+          "oklch(82% 0.12258 27.14)",
+          "oklch(95% 0.12258 27.14)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Encabezado",
+        "purpose": "Título de página Cinzel."
+      },
+      "body": {
+        "displayName": "Texto",
+        "purpose": "Descripción y explicación operativa."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "switch-thumb",
+        "value": "transform .16s ease-out",
+        "purpose": "Desplazamiento del pulgar; se elimina con movimiento reducido."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1050px"
+      },
+      {
+        "name": "mobile-header",
+        "value": "720px"
+      },
+      {
+        "name": "stack-controls",
+        "value": "650px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón secundario",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acciones de control como Desactivar todas.",
+      "html": "<button class=\"ds-secondary\">Desactivar todas</button>",
+      "css": ".ds-secondary{font-family:var(--hoard-font-sans);font-size:14px;background:transparent;color:var(--hoard-text);border:1px solid var(--hoard-border);padding:10px 16px;border-radius:6px;font-weight:600;cursor:pointer}.ds-secondary:hover{background:var(--hoard-elevated);border-color:var(--hoard-border-hover)}.ds-secondary:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}.ds-secondary:disabled{opacity:.55;cursor:default}"
+    },
+    {
+      "name": "Navegación activa",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Entrada activa del lateral.",
+      "html": "<a class=\"ds-nav\" href=\"#\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 7h16M4 17h16M9 4v6m6 4v6\"/></svg>Funciones</a>",
+      "css": ".ds-nav{font-family:var(--hoard-font-sans);font-size:14px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;background:var(--hoard-elevated);color:var(--hoard-accent);text-decoration:none;font-weight:600}.ds-nav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.ds-nav:hover{color:var(--hoard-text)}.ds-nav:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}"
+    },
+    {
+      "name": "Fila de módulo",
+      "kind": "custom",
+      "refersTo": "module-row",
+      "description": "Nombre, procedencia y explicación separados por una línea.",
+      "html": "<article class=\"ds-module\"><h2>Función <span>Origen</span></h2><p>Activa sólo lo que quieras usar.</p></article>",
+      "css": ".ds-module{font-family:var(--hoard-font-sans);font-size:14px;color:var(--hoard-text);padding:22px 0;border-top:1px solid var(--hoard-border)}.ds-module h2{font-size:19px;font-weight:600;margin:0 0 6px}.ds-module h2 span{font-size:13px;font-weight:400;color:var(--hoard-text-dim);margin-left:10px}.ds-module p{font-size:14px;color:var(--hoard-text-muted);line-height:1.6;margin:0}"
+    },
+    {
+      "name": "Interruptor de función",
+      "kind": "button",
+      "refersTo": "switch-track",
+      "description": "Estado visible y control accesible de cada motor.",
+      "html": "<button class=\"ds-switch\" role=\"switch\" aria-checked=\"false\"><span>Desactivada</span><span class=\"ds-track\"><span class=\"ds-thumb\"></span></span></button>",
+      "css": ".ds-switch{font-family:var(--hoard-font-sans);font-size:14px;display:flex;gap:10px;align-items:center;border:0;padding:8px 0 8px 8px;min-height:44px;background:transparent;color:var(--hoard-text-muted);font-size:13px;cursor:pointer}.ds-track{display:block;width:42px;height:24px;border-radius:14px;background:var(--hoard-border);padding:3px;box-sizing:border-box}.ds-thumb{display:block;width:18px;height:18px;border-radius:50%;background:var(--hoard-text);transition:transform .16s ease-out}.ds-switch[aria-checked=true]{color:var(--hoard-accent)}.ds-switch[aria-checked=true] .ds-track{background:var(--hoard-accent)}.ds-switch[aria-checked=true] .ds-thumb{background:var(--hoard-accent-ink);transform:translateX(18px)}.ds-switch:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}@media(prefers-reduced-motion:reduce){.ds-thumb{transition:none}}"
+    },
+    {
+      "name": "Ubicación desplegable",
+      "kind": "custom",
+      "description": "Datos secundarios consultables sin ocupar la fila completa.",
+      "html": "<details class=\"ds-location\"><summary>Ubicación de los datos</summary><code>D:\\Hoard\\data</code></details>",
+      "css": ".ds-location{font-family:var(--hoard-font-sans);font-size:14px;margin-top:10px;font-size:12px;color:var(--hoard-text-dim)}.ds-location summary{cursor:pointer}.ds-location summary:hover{color:var(--hoard-text)}.ds-location summary:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}.ds-location code{display:block;overflow-wrap:anywhere;margin-top:6px;font-size:12px;line-height:1.6}"
+    },
+    {
+      "name": "Campo de búsqueda",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Búsqueda con etiqueta visible en los módulos activos.",
+      "html": "<label class=\"ds-search\">Buscar en las funciones activas<input type=\"search\" placeholder=\"Una frase, un asunto o una referencia\"></label>",
+      "css": ".ds-search{font-family:var(--hoard-font-sans);font-size:14px;display:block;color:var(--hoard-text);font-weight:600}.ds-search input{display:block;margin-top:10px;padding:10px 12px;border:1px solid var(--hoard-border);border-radius:6px;color:var(--hoard-text);background:var(--hoard-surface);font:inherit;caret-color:var(--hoard-accent)}.ds-search input::placeholder{color:var(--hoard-text-muted)}.ds-search input:hover{border-color:var(--hoard-border-hover)}.ds-search input:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}"
+    },
+    {
+      "name": "Automatismos",
+      "kind": "input",
+      "description": "Casilla explícita separada del motor del módulo.",
+      "html": "<label class=\"ds-automation\"><input type=\"checkbox\">Automatismos</label>",
+      "css": ".ds-automation{font-family:var(--hoard-font-sans);font-size:14px;display:flex;gap:8px;align-items:center;color:var(--hoard-text-muted)}.ds-automation input{accent-color:var(--hoard-accent);width:18px;height:18px}.ds-automation:hover{color:var(--hoard-text)}.ds-automation input:focus-visible{outline:3px solid var(--hoard-accent);outline-offset:4px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La familia Hoard existente",
+    "overview": "La identidad vigente de Borges's Hoard pertenece a la familia Hoard: fondos oscuros teñidos, acento propio, icono existente, títulos Cinzel y texto Source Sans 3. El panel Funciones prolonga esa identidad sin sustituir la presentación de las herramientas nativas. Esta actualización combina el panel construido con los patrones anteriores que siguen aplicando en sus pantallas; los tokens normativos de cabecera describen el panel Funciones, no una recoloración de todas las vistas.\n\nLa interfaz operativa prioriza el nombre de la función, una explicación breve y controles con estado escrito. La profundidad procede del contraste entre fondo, lateral y selección. La marca de Faustus conserva su identidad familiar independiente; no se usa para recolorear el producto.",
+    "keyCharacteristics": [
+      "Icono propio conservado y navegación familiar.",
+      "Jerarquía tipográfica serifa/sans, con controles y estados legibles.",
+      "Filas separadas por bordes y profundidad tonal contenida."
+    ],
+    "rules": [
+      {
+        "name": "The Product Accent Rule",
+        "body": "El acento propio identifica la aplicación, la navegación activa y el estado encendido; los párrafos permanecen en los tonos de texto.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do conservar el icono existente y las familias locales Cinzel y Source Sans 3.",
+      "Do acompañar cada interruptor con su estado escrito y un nombre accesible.",
+      "Do mantener el borde de fila y el foco visibles en el tema oscuro.",
+      "Do respetar los patrones nativos conservados al extender sus pantallas."
+    ],
+    "donts": [
+      "Don’t sustituir la identidad del Hoard por un tema genérico.",
+      "Don’t usar el acento para párrafos largos.",
+      "Don’t convertir las filas de Funciones en tarjetas decorativas elevadas."
+    ]
+  }
+}
