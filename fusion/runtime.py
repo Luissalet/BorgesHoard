@@ -149,7 +149,10 @@ def create_runtime(*, name, product, root, data_dir, specs, factory, port):
         # The shared launcher uses root-relative relay URLs. Keep the original
         # app/data-space identity when it is opened from a native module page.
         if request.url.path.startswith('/api/copilot/'):
-            referer = urlsplit(request.headers.get('referer', ''))
+            try:
+                referer = urlsplit(request.headers.get('referer', ''))
+            except ValueError:
+                referer = urlsplit('')
             key = referer.path.strip('/').split('/', 1)[0]
             if referer.scheme == request.url.scheme and referer.netloc == request.url.netloc and key in modules:
                 from .native_response import NativeResponse

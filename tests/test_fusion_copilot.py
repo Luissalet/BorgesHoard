@@ -60,7 +60,8 @@ def test_native_spaces_and_root_relative_relay_are_preserved(tmp_path, monkeypat
             assert central['app_id'] == 'borges'
             assert central['data_space_id'] == (tmp_path / 'copilot-space-id').read_text()
             for referer in ['https://127.0.0.1:5184/links/', 'http://127.0.0.1:5185/links/',
-                            'http://elsewhere.invalid/links/', 'http://127.0.0.1:5184/linksdifferent/']:
+                            'http://elsewhere.invalid/links/', 'http://127.0.0.1:5184/linksdifferent/',
+                            'http://[invalid']:
                 assert client.get('/api/copilot/info', headers={'Referer': referer}).json() == central
     finally:
         stub.shutdown(); stub.server_close(); thread.join()
