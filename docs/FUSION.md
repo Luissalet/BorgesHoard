@@ -37,3 +37,23 @@ Procedencia exacta en `provenance/sources.json`; las licencias MIT y las licenci
 ## Conversaciones de Faustus
 
 Cada interfaz nativa conserva su identidad y copilot-space-id originales. El lanzador común se sirve sin cambios; las peticiones relativas a la raíz se envían al módulo de la página de origen. Biblioteca conserva Borges, Lecturas conserva Links y Trámites conserva Kafka, con el contexto y las herramientas de esa interfaz. Consultar el panel de un módulo apagado no lo activa.
+
+## Servicios nativos entre funciones
+
+Los consumidores conservan el contrato documental anterior: OCR correcto devuelve
+`ok: true` y `via: kafka`; los errores se devuelven como datos. El OCR de PDF utiliza
+el trabajo real de Trámites y consulta `ocr_status` mientras siga pendiente, con
+esperas de hasta 150 segundos y el presupuesto original de 900 segundos por defecto.
+`timeout_s` pertenece al consumidor, no se envía como parámetro nativo. Al agotar el
+presupuesto se conserva `job_id` y `still_running` para continuar el mismo trabajo.
+
+Lecturas adapta igualmente el resultado nativo de OCR de imagen. Un motor no
+disponible (409/503) permite la alternativa local Tesseract; un error de herramienta
+conserva su categoría. Estos flujos no pasan por el Hub ni arrancan servidores
+absorbidos. La fuente Links de Biblioteca consulta `list_links` y `read_link` mediante
+el mismo despacho interno y mantiene la sincronización e indexación completas.
+
+`tests/test_native_services.py` verifica los consumidores con trabajos, callback
+ASGI/Node y ffmpeg reales, y un reconocedor OCR sintético en el nivel inferior;
+incluye PDF pendiente/finalizado, continuidad después de timeout, digest con texto
+literal, errores/alternativa local y sincronización de artículos sin HTTP antiguo.

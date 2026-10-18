@@ -20,7 +20,11 @@ function nativeCall(module, tool, args) {
     output({ type: 'native-call', id, module, tool, arguments: args });
   });
 }
-(await import('../links_native/server/videodigest.js')).setNativeOcrProvider((path, { lang }) => nativeCall('paperwork', 'ocr_image', { path, lang }));
+(await import('../links_native/server/videodigest.js')).setNativeOcrProvider(async (path, { lang }) => {
+  const result = await nativeCall('paperwork', 'ocr_image', { path, lang });
+  if (result?.ok === false || result?.error) return { ...result, ok: false, via: 'kafka', kind: result.kind === 'unavailable' ? 'unavailable' : 'error' };
+  return { ...result, ok: true, via: 'kafka', backend: `kafka${result?.backend ? '/' + result.backend : ''}` };
+});
 const server = http.createServer((req, res) => {
   res.on('finish', () => { output({ id: req.socket.requestId, type: 'end' }); sockets.delete(req.socket.requestId); });
   app(req, res);

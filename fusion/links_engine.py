@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import h11
+import httpx
 from fastapi import FastAPI
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +30,8 @@ class LinksEngine:
     async def callback(self, message):
         try:
             result = await asyncio.to_thread(self.native_call, message['module'], message['tool'], message.get('arguments') or {})
+        except httpx.HTTPStatusError as exc:
+            result = {'ok': False, 'kind': 'unavailable' if exc.response.status_code in (409, 503) else 'error', 'error': str(exc)}
         except Exception as exc:
             result = {'ok': False, 'kind': 'unavailable', 'error': str(exc)}
         await self.send({'type': 'native-result', 'id': message['id'], 'result': result})

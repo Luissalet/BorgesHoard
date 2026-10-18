@@ -12,14 +12,8 @@ def factory(key, data_dir, *, port, automatic=False, native_call=None, native_av
         from borges import links_source
         from borges.extract import pdf
         links_source.native_caller = lambda tool, args: native_call('links', tool, args)
-        class NativeDocs:
-            @staticmethod
-            def available():
-                return native_available('paperwork')
-            @staticmethod
-            def ocr_pdf(path, **kwargs):
-                return native_call('paperwork', 'ocr_pdf', dict(path=path, **kwargs))
-        pdf.fam_docs = NativeDocs
+        from .native_docs import NativeDocs
+        pdf.fam_docs = NativeDocs(native_call, native_available)
         config = Config.from_env()
         config.data_dir, config.port, config.data_dir_configured = data_dir, port, True
         config.watch = config.autostart = automatic
