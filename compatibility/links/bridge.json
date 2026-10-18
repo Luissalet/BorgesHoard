@@ -1,0 +1,1881 @@
+{
+  "owner": "borges",
+  "owner_url": "http://127.0.0.1:5184",
+  "tools": [
+    {
+      "schema": {
+        "name": "save_link",
+        "description": "Save a URL to the read-later library (idempotent; waits for the fetch).\nSave a URL to the read-later library. Idempotent on the normalized URL (strips tracking params and trailing slash): saving an already-saved page returns it unchanged with existing: true. Waits up to 10s for the background fetch so it can return the real title, site and excerpt; if the fetch is still pending or failed, that is reported instead of guessed.\nSinÃ³nimos: guarda esto, guardar enlace, para luego, guarda este artÃ­culo, marcador, guardar pÃ¡gina",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The URL to save"
+            },
+            "tags": {
+              "default": [],
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "note": {
+              "default": "",
+              "type": "string",
+              "maxLength": 5000
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "list_links",
+        "description": "List saved links by state, tag, site or date.\nList saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (an ISO date, an age like 7d or hace 2 horas, or hoy/ayer/esta semana). Paginated (limit up to 100).\nSinÃ³nimos: enlaces, lo que guardÃ©, bandeja, quÃ© tengo guardado, lista de lecturas, pendientes de leer",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "state": {
+              "default": "unread",
+              "type": "string",
+              "enum": [
+                "unread",
+                "read",
+                "archived",
+                "all"
+              ]
+            },
+            "tag": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "site": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "since": {
+              "description": "since accepts epoch seconds, an ISO date or time (\"2026-09-25\", \"2026-09-25T10:30\"), an age (\"30m\", \"2h\", \"3d\", \"2w\", \"1mo\", \"hace 2 horas\", \"2 hours ago\"), or a word: hoy/today, ayer/yesterday, esta maÃ±ana/this morning, esta semana/this week, la semana pasada/last week, este mes/this month, el mes pasado/last month, Ãºltima hora/last hour.",
+              "type": "string",
+              "maxLength": 40
+            },
+            "limit": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "cursor": {
+              "default": 0,
+              "description": "Offset for paging; use next_cursor from the previous call",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "search_links",
+        "description": "Full-text search over saved links.\nFull-text search over title, description, extracted content, notes and tags. Returns the same shape as list_links.\nSinÃ³nimos: buscar enlace, encontrar artÃ­culo, buscar en lo guardado, dÃ³nde leÃ­, busca esto",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "limit": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "q"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "read_link",
+        "description": "Read a saved link's extracted text, paginated; summarize only from it.\nRead a saved link's extracted text, paginated by characters (max_chars, default 4000; offset to page further). Identify by id or url. Returns title, byline, site, the text slice, whether more remains, and highlights. Summarize only from this text, never from the title alone.\nSinÃ³nimos: leer artÃ­culo, texto del enlace, quÃ© dice, contenido del artÃ­culo, lÃ©eme esto",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "offset": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "max_chars": {
+              "default": 4000,
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "read_link_paragraphs",
+        "description": "Read saved article paragraphs with versioned reader anchors.\nReturns whole paragraphs paginated by index; offset counts paragraphs. IDs change when content changes.\nSinÃ³nimos: pÃ¡rrafos del artÃ­culo, pasajes, anclas, leer origen de una cita",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "offset": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "limit": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "ask_link",
+        "description": "Ask a question about saved article text, with paragraph citations.\nUses the Hub model; returns sentences with exact quotes, reader_url anchors and source_version. Reports partial context, invalid quotes, unavailable model or changed text. Exact quote checks do not verify interpretation. Does not fetch or edit the article.\nSinÃ³nimos: preguntar al artÃ­culo, responder con citas, explicar este enlace, respuesta con pÃ¡rrafos",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "question"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "tag_link",
+        "description": "Add or remove labels only; this does not mark a link as favorite.\nUse id or url. Unlisted tags are left untouched. A tag named favorita is still just a label; use mark_link with state favorite to change actual favorite status.\nSinÃ³nimos: etiquetar, poner etiqueta, quitar etiqueta, clasificar enlace",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "add": {
+              "default": [],
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "remove": {
+              "default": [],
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "edit_link",
+        "description": "Edit a saved link's title, notes or tags; omitted fields stay unchanged.\nRead the current link first. tags_add/tags_remove preserve other labels.\nSinÃ³nimos: editar enlace, cambiar tÃ­tulo, escribir notas, aÃ±adir etiquetas",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "notes": {
+              "type": "string",
+              "maxLength": 20000
+            },
+            "tags": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "tags_add": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "tags_remove": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "archived": {
+              "type": "boolean"
+            },
+            "favorite": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "mark_link",
+        "description": "Set actual read, archive or favorite status (not a tag).\nSet state to read, unread, archived or favorite; on/off toggles it (default true). To mark a link as favorite, use this tool with state favorite, not tag_link.\nSinÃ³nimos: marcar leÃ­do, marcar como leÃ­do, archivar, marcar favorito, destacar, marcar sin leer",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "read",
+                "unread",
+                "archived",
+                "favorite"
+              ]
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "add_highlight",
+        "description": "Save a verbatim quote from read_link, with an optional note. Identify the link by id or url.\nThe quote must appear in the extracted article text; read_link first. If extraction is pending or failed, do not invent a quote.\nSinÃ³nimos: subrayar, destacar texto, guardar cita, anotar frase",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 5000
+            },
+            "note": {
+              "default": "",
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "text"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "import_video_transcript",
+        "description": "Import subtitles of a saved YouTube video into searchable text.\nDownloads available Spanish or English captions, not the video, and makes them available to read_link, search_links and highlights. Requires Python yt-dlp; reports when captions are unavailable. Identify the saved video by id or url.\nSinÃ³nimos: transcribir vÃ­deo, leer subtÃ­tulos, importar transcripciÃ³n, resumir vÃ­deo de YouTube",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "link_digest",
+        "description": "Links saved since a date or an age (\"7d\", \"esta semana\"), with excerpts, grouped by site. Weekly recap.\nSinÃ³nimos: resumen de la semana, quÃ© guardÃ© esta semana, digest, novedades guardadas",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "since": {
+              "default": "7d",
+              "description": "since accepts epoch seconds, an ISO date or time (\"2026-09-25\", \"2026-09-25T10:30\"), an age (\"30m\", \"2h\", \"3d\", \"2w\", \"1mo\", \"hace 2 horas\", \"2 hours ago\"), or a word: hoy/today, ayer/yesterday, esta maÃ±ana/this morning, esta semana/this week, la semana pasada/last week, este mes/this month, el mes pasado/last month, Ãºltima hora/last hour.",
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "refetch_link",
+        "description": "Re-download and re-extract a saved link's page.\nRe-download and re-extract a saved link's page (id or url). Use when fetch_status is failed or the page changed.\nSinÃ³nimos: reintentar descarga, actualizar artÃ­culo, volver a leer, refrescar enlace",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "delete_link",
+        "description": "Permanently delete a saved link and its highlights (id or url). Irreversible; confirm with the user first.\nSinÃ³nimos: borrar enlace, eliminar artÃ­culo, quitar de la lista",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_add",
+        "description": "Follow a feed, a GitHub repository or a page for new things.\nFollow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinÃ³nimos: sigue este feed, avÃ­same cuando, vigilar pÃ¡gina, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Feed, GitHub repository or page URL"
+            },
+            "kind": {
+              "default": "auto",
+              "type": "string",
+              "enum": [
+                "auto",
+                "feed",
+                "github",
+                "page"
+              ]
+            },
+            "name": {
+              "default": "",
+              "type": "string",
+              "maxLength": 200
+            },
+            "every_min": {
+              "default": 60,
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 10080
+            },
+            "tags": {
+              "default": [],
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "auto_save": {
+              "default": true,
+              "type": "boolean"
+            },
+            "github": {
+              "default": "releases",
+              "type": "string",
+              "enum": [
+                "releases",
+                "tags",
+                "commits"
+              ]
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_list",
+        "description": "List the watches with last check, error and item count.\nList the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinÃ³nimos: quÃ© sigo, mis feeds, vigilancias, suscripciones, quÃ© estoy siguiendo",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_items",
+        "description": "What the watches brought in: entries, releases, changes.\nWhat the watches brought in: new feed entries, releases and page changes, newest first. unread (default true) hides dismissed items; since is an ISO date; watch_id narrows to one watch. Each item has title, url, summary, published_at and the saved link_id when auto_save applied.\nSinÃ³nimos: novedades, quÃ© hay nuevo, quÃ© ha salido, Ãºltimas releases, cambios, lo que llegÃ³",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "watch_id": {
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            },
+            "unread": {
+              "default": true,
+              "type": "boolean"
+            },
+            "limit": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_check",
+        "description": "Check a watch now (or every due one) and return what was new.\nCheck a watch now (or every due watch when watch_id is omitted) instead of waiting for its schedule; returns what was new.\nSinÃ³nimos: comprueba ahora, actualiza el feed, mira si hay algo nuevo, refrescar vigilancias",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "watch_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_dismiss",
+        "description": "Mark a watch item as seen (or unseen with dismissed=false) so it leaves the unread list.\nSinÃ³nimos: visto, descartar novedad, marcar como leÃ­do, ya lo vi",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "dismissed": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "item_id"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "watch_remove",
+        "description": "Stop following a watch (its items stay; saved links stay). Confirm with the user first.\nSinÃ³nimos: deja de seguir, quitar feed, cancelar suscripciÃ³n, dejar de vigilar",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "watch_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "watch_id"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "highlights_to_cards",
+        "description": "Turn saved highlights into Hypatia flashcards â€” subrayados a tarjetas, enviar a Hypatia\nSends highlights (default: every one not sent yet) to Hypatia through the hub as flashcards: front = the highlighted text, back = your note and the article title, source_ref = hoard://links/highlight/<id>. Each highlight goes once. Returns ok, status (ok, nothing_new, hub_down, hypatia_unavailable, hypatia_error, unknown_link), sent and skipped; never claims cards were made when status is not ok.\nSinÃ³nimos: pasar subrayados a tarjetas, flashcards de lo que leÃ­, estudiar mis subrayados, mandar a Hypatia, tarjetas de lecturas, repasar lo subrayado",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "link_id": {
+              "description": "Only the highlights of this saved link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Only the highlights of the saved link with this URL",
+              "type": "string"
+            },
+            "since": {
+              "description": "since accepts epoch seconds, an ISO date or time (\"2026-09-25\", \"2026-09-25T10:30\"), an age (\"30m\", \"2h\", \"3d\", \"2w\", \"1mo\", \"hace 2 horas\", \"2 hours ago\"), or a word: hoy/today, ayer/yesterday, esta maÃ±ana/this morning, esta semana/this week, la semana pasada/last week, este mes/this month, el mes pasado/last month, Ãºltima hora/last hour.",
+              "type": "string"
+            },
+            "deck": {
+              "default": "Lecturas",
+              "description": "Hypatia deck (default \"Lecturas\")",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "resend": {
+              "default": false,
+              "description": "Send again highlights that already went; Hypatia does not duplicate a card",
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "resurface",
+        "description": "What to read today from the saved-but-unread â€” para leer hoy, rescata enlaces\nPicks count links (default 3) worth reading now: unread for a while (older first), favourites, ones with highlights and topics the user reads weigh more; a read link with highlights comes back for a re-read after two weeks. Never the same link twice within 14 days (30 for a re-read). The list is the same all day and changes tomorrow; each item says why (reason).\nSinÃ³nimos: quÃ© leo hoy, algo para leer, rescatar enlaces, lecturas pendientes, quÃ© tengo sin leer, recomiÃ©ndame un artÃ­culo",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "reading_plan",
+        "description": "Plan saved unread texts within your reading time â€” lecturas que caben en tus minutos\nUses known word counts and an assumed speed (default 200 words/minute), rounding each complete text up to a minute. Selects the fullest estimated budget up to max_items; ties favour favourites, fewer texts and older entries. Optional exact tag and site filters. Returns selected links, estimated/unused minutes and exclusions for missing text/counts or unsupported kinds. Does not fetch, mark read, reserve links or change daily resurfacing.\nSinÃ³nimos: tengo veinte minutos, plan de lectura, lecturas cortas, quÃ© puedo leer en diez minutos, tiempo para leer, reading time budget",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "minutes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 240,
+              "description": "Available reading time in whole minutes."
+            },
+            "words_per_minute": {
+              "default": 200,
+              "description": "Your assumed reading speed; default 200 words/minute.",
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 1000
+            },
+            "max_items": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "site": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "minutes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "list_tags",
+        "description": "List every tag in use (excluding archived links) with counts, most used first.\nSinÃ³nimos: etiquetas, quÃ© etiquetas tengo, lista de etiquetas",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_download",
+        "description": "Download video, audio or photos from a URL â€” descargar, bÃ¡jame vÃ­deo, audio, fotos.\nSaves content to disk (yt-dlp / gallery-dl), not save_link. format auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link bookmarks with tag descarga. Waits by default; returns absolute path and size. Success only if ok and files non-empty; running: media_status; failed: media_retry.\nSinÃ³nimos: descÃ¡rgame esto, descarga este vÃ­deo, bÃ¡jame, bÃ¡jate, guarda el vÃ­deo, sÃ¡came el audio, pÃ¡salo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar mÃºsica, guardar el vÃ­deo en el disco, download video, Instagram fotos",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Link to the video, audio or post (YouTube, X, Instagram, TikTok, â€¦)"
+            },
+            "format": {
+              "default": "auto",
+              "description": "auto: video, or photos when the post has no video; video: H.264/AAC MP4; audio: MP3; image: photo posts/carousels via gallery-dl",
+              "type": "string",
+              "enum": [
+                "auto",
+                "video",
+                "audio",
+                "image"
+              ]
+            },
+            "quality": {
+              "default": "best",
+              "description": "Maximum video height: best, 1080, 720, 480, or an exact pixel height; combined with max_height the lower wins",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "360",
+                    "480",
+                    "720",
+                    "1080",
+                    "1440",
+                    "2160",
+                    "best"
+                  ]
+                },
+                {
+                  "type": "integer",
+                  "minimum": 144,
+                  "maximum": 4320
+                }
+              ]
+            },
+            "dir": {
+              "description": "Absolute folder to save into (default: the configured downloads folder)",
+              "type": "string",
+              "maxLength": 1000
+            },
+            "dest_dir": {
+              "description": "Alias of dir (the other family apps send both)",
+              "type": "string",
+              "maxLength": 1000
+            },
+            "sections": {
+              "description": "Only these parts: [[start_s, end_s], ...] (at most 10, 0 <= start < end); several parts give one file each",
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "max_duration_s": {
+              "description": "Refuse a video longer than this many seconds, before downloading",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 604800
+            },
+            "max_height": {
+              "description": "Cap the resolution (on top of quality: the lower wins)",
+              "type": "integer",
+              "minimum": 144,
+              "maximum": 4320
+            },
+            "save_link": {
+              "default": true,
+              "description": "Also save the URL in the library with tag descarga and the caption",
+              "type": "boolean"
+            },
+            "playlist": {
+              "default": false,
+              "description": "Download a whole playlist (up to max_items) instead of the single video",
+              "type": "boolean"
+            },
+            "max_items": {
+              "default": 50,
+              "description": "Max playlist items when playlist is true",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "cookies_browser": {
+              "description": "Browser whose login cookies to use (firefox, chrome, edge, braveâ€¦); default tries without, then each browser",
+              "type": "string",
+              "maxLength": 60
+            },
+            "wait": {
+              "default": true,
+              "description": "Wait for the download to finish (default true)",
+              "type": "boolean"
+            },
+            "timeout_s": {
+              "default": 150,
+              "description": "Seconds to wait (default 150, under the assistant's 180 s call limit); past it the download keeps running and media_status follows it",
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 3600
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_status",
+        "description": "Progress and result of media downloads â€” estado de las descargas, cÃ³mo va la descarga\nWith id: that download's status, progress, speed, eta and, when done, its files (absolute paths); wait_s (up to 150) blocks until it finishes or the time runs out. Without id: the most recent downloads (status filter: queued, downloading, processing, done, failed, cancelled, active or finished).\nSinÃ³nimos: cÃ³mo va la descarga, estado de la descarga, quÃ© he descargado, descargas en curso, dÃ³nde se guardÃ³, lista de descargas, ruta del archivo descargado",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "limit": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "wait_s": {
+              "default": 0,
+              "description": "With id: wait up to this many seconds for the download to finish",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 150
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_cancel",
+        "description": "Cancel a queued or running media download â€” cancelar descarga, parar la descarga\nA waiting download is removed from the queue; the running one is stopped and its whole process tree killed. Partial files are cleaned up.\nSinÃ³nimos: cancela la descarga, para la descarga, detÃ©n la descarga, no la descargues, abortar descarga",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_retry",
+        "description": "Retry a failed or cancelled media download â€” reintentar descarga, volver a descargar\nPuts the same download back in the queue (same url, format, quality and folder) and, with wait (default true), waits for the result like media_download.\nSinÃ³nimos: reintenta la descarga, vuelve a descargarlo, intÃ©ntalo otra vez, descargar de nuevo",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "wait": {
+              "default": true,
+              "type": "boolean"
+            },
+            "timeout_s": {
+              "default": 150,
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 3600
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_probe",
+        "description": "Inspect a link before downloading (title, duration, qualities) â€” comprobar enlace, ver formatos\nAsks yt-dlp (or gallery-dl for photo posts) what is behind a URL without downloading: title, uploader, duration, available video heights, whether it is a playlist or a photo post. Needs the network.\nSinÃ³nimos: quÃ© hay en este enlace, es un vÃ­deo o fotos, quÃ© calidades tiene, cuÃ¡nto dura, ver informaciÃ³n del vÃ­deo, comprobar si se puede descargar",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "playlist": {
+              "default": false,
+              "type": "boolean"
+            },
+            "cookies_browser": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_info",
+        "description": "What is behind a link, for other apps and for the assistant â€” informaciÃ³n del enlace, metadatos del vÃ­deo\nSame as media_probe plus the fields the family clients need: id, extractor, thumbnail (URL), subtitle_langs (manual and automatic captions, deduplicated), is_live, description (up to 2000 characters), heights, is_playlist and, for a photo post, photo_post: true. Does not download anything. Needs the network.\nSinÃ³nimos: informaciÃ³n del vÃ­deo, quÃ© subtÃ­tulos tiene, miniatura del vÃ­deo, metadatos del enlace, idiomas de los subtÃ­tulos, es un directo",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "playlist": {
+              "default": false,
+              "type": "boolean"
+            },
+            "cookies_browser": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_subtitles",
+        "description": "Get the captions of a video as text with timing â€” subtÃ­tulos, transcripciÃ³n de un vÃ­deo\nReads the subtitles of a video without downloading it: langs (default es, en) in order of preference, the first language that has captions wins, manual captions before automatic ones. Returns text (continuous speech, rolling auto-caption repeats removed), lang, source (manual or auto) and cues [{start_s, end_s, text}]. Fails with a clear message when there are none, listing the languages that exist.\nSinÃ³nimos: dame los subtÃ­tulos, transcripciÃ³n del vÃ­deo de YouTube, quÃ© dice el vÃ­deo, resumen del vÃ­deo sin descargarlo, texto del vÃ­deo, subtÃ­tulos automÃ¡ticos",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "langs": {
+              "default": [
+                "es",
+                "en"
+              ],
+              "description": "Languages in order of preference",
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20
+              }
+            },
+            "cookies_browser": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_audio_for_asr",
+        "description": "Download the audio of a link as mono 16 kHz WAV for speech to text â€” audio para transcribir\nLike media_download with format audio, but the file is a mono 16 kHz PCM WAV (what the speech-to-text engines read), kept in the downloads folder's asr subfolder and never saved as a library link. sections cuts parts, max_duration_s refuses a longer video. Waits up to timeout_s (default 150) and returns the download view; files[0].path is the WAV. If it is still running, follow it with media_status.\nSinÃ³nimos: audio para transcribir, sacar el audio en wav, audio para whisper, preparar el audio para el reconocimiento de voz",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sections": {
+              "description": "Only these parts: [[start_s, end_s], ...] (at most 10, 0 <= start < end); several parts give one file each",
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "max_duration_s": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 604800
+            },
+            "cookies_browser": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "wait": {
+              "default": true,
+              "type": "boolean"
+            },
+            "timeout_s": {
+              "default": 150,
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 3600
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_tools",
+        "description": "Show or update yt-dlp, gallery-dl and ffmpeg â€” herramientas de descarga, actualizar yt-dlp\nReports which of yt-dlp, gallery-dl and ffmpeg were found (path, version and how: env, PATH, sibling app folder, python module), the downloads folder and the install command when something is missing. update: true runs the updaters (yt-dlp -U or pip install -U) and returns the versions before and after.\nSinÃ³nimos: tengo yt-dlp, estÃ¡ instalado ffmpeg, actualizar yt-dlp, por quÃ© no descarga, instalar el descargador, versiÃ³n de yt-dlp, herramientas de descarga",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "update": {
+              "default": false,
+              "type": "boolean"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ytdlp",
+                  "gallerydl"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "site_sessions",
+        "description": "Which sites Links is signed in to for downloads â€” sesiones guardadas, iniciar sesiÃ³n en YouTube/X/Instagram\nLists the browsers it can use (the system default first; choice auto follows the default) and the sites with a login button (YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon): whether Links holds a signed-in session for each, since when, the browser it uses and the login window if one is open (state: opening, waiting, signing, saved, capturing, closed, expired, failed). No cookie values are returned.\nSinÃ³nimos: con quÃ© cuentas estÃ¡ conectado Links, sesiones de descarga, estoy logueado en YouTube, cookies de descargas",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "site_login",
+        "description": "Open a sign-in window so downloads can use the account â€” iniciar sesiÃ³n con YouTube, X, Instagramâ€¦\nOpens a window of the user's default browser when it is a Chromium one (Brave, Chrome, Edge, Vivaldiâ€¦; else the first installed) on the computer where Links runs, on that site's login page, with a browser profile of Links' own. The user signs in there themselves; Links saves the session on its own and closes the window (or call with finish: true once they say they are done). Use it after a download failed with login, then media_retry. Never ask the user for their password and never type it.\nSinÃ³nimos: inicia sesiÃ³n en youtube para descargar, conÃ©ctate a mi cuenta de instagram, loguÃ©ate en X, usar mi cuenta para descargar",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "site": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "description": "Site id: youtube, x, instagram, threads, tiktok, facebook, reddit, twitch, vimeo, pinterest, soundcloud, bilibili, patreon"
+            },
+            "finish": {
+              "default": false,
+              "description": "The user says they finished: read the session now and close the window",
+              "type": "boolean"
+            },
+            "cancel": {
+              "default": false,
+              "description": "Close the window without waiting",
+              "type": "boolean"
+            },
+            "browser": {
+              "description": "Browser to use from now on (a name from site_sessions browsers, or auto = the system default); omit to keep the current one",
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          "required": [
+            "site"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "site_logout",
+        "description": "Forget Links' session on a site â€” cerrar sesiÃ³n de YouTube/X/Instagram en Links\nDeletes that site's cookies from Links' browser profile and from the cookies file downloads use. The user's own browser is not touched.\nSinÃ³nimos: cierra la sesiÃ³n de youtube en links, olvida mi cuenta de instagram, quita la sesiÃ³n",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "site": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          },
+          "required": [
+            "site"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "media_delete",
+        "description": "Remove a download record, optionally its files â€” borrar descarga, quitar archivo descargado\nRemoves the record from the downloads list. With delete_files: true AND confirm: true it also deletes the downloaded files from the disk (permanent, there is no recycle bin): confirm with the user first. A running download must be cancelled first.\nSinÃ³nimos: borra la descarga, elimina el archivo descargado, quita de la lista de descargas, borrar el vÃ­deo descargado",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "delete_files": {
+              "default": false,
+              "type": "boolean"
+            },
+            "confirm": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "link_video",
+        "description": "Transcript (with timestamps) and key frames of a saved video link â€” transcripciÃ³n del vÃ­deo, fotogramas clave\nReturns what the background analysis obtained for a saved video: status (none, queued, running, done, partial, failed, no_source), the transcript (status, via, language, text, timed segments) and the key frames (index, t_s, time, reason and the absolute path of the JPEG). Identify the link by id or url. If the status is none or no_source, offer link_video_analyze. Quote only what is returned.\nSinÃ³nimos: quÃ© dice el vÃ­deo, transcripciÃ³n del reel, resumen del vÃ­deo, fotogramas, capturas del vÃ­deo, subtÃ­tulos locales",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "segments": {
+              "default": true,
+              "description": "Include the timed segments",
+              "type": "boolean"
+            },
+            "max_chars": {
+              "default": 20000,
+              "description": "Cut the transcript text at this many characters",
+              "type": "integer",
+              "minimum": 500,
+              "maximum": 200000
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "link_video_analyze",
+        "description": "Transcribe a saved video link and extract its key frames â€” analizar vÃ­deo, transcribir reel\nQueues (or repeats) the analysis of a saved link: a transcript through the family speech-to-text service (or faster-whisper on the CPU when installed) and key frames by scene change. The media is a file given in path, a finished download of the link, or - with download: true - the video downloaded with the application downloader. Idempotent: a finished analysis of the same file is returned unchanged unless force is true. wait (default true) follows it up to timeout_s; if it is still running, call link_video later.\nSinÃ³nimos: transcribe este reel, analiza el vÃ­deo, saca los fotogramas, transcribir vÃ­deo guardado, subtÃ­tulos del vÃ­deo, procesar vÃ­deo",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute path of a video or audio file to use as the source",
+              "type": "string",
+              "minLength": 1
+            },
+            "download": {
+              "default": false,
+              "description": "Allow downloading the video of this link when no file is at hand",
+              "type": "boolean"
+            },
+            "force": {
+              "default": false,
+              "type": "boolean"
+            },
+            "language": {
+              "type": "string",
+              "maxLength": 10
+            },
+            "wait": {
+              "default": true,
+              "type": "boolean"
+            },
+            "timeout_s": {
+              "default": 120,
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 1800
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "link_video_search",
+        "description": "Search the spoken words of all analysed videos â€” buscar en transcripciones\nFull-text search over the transcripts of saved videos. Returns the matching lines with the link, the title and the time (seconds and m:ss) where they are said.\nSinÃ³nimos: quÃ© vÃ­deo dice, dÃ³nde dijo, buscar en los reels, buscar en las transcripciones, frase en un vÃ­deo",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "limit": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_digest",
+        "description": "Watch a video for you and return a cheap text digest â€” digiere este vÃ­deo, resume el vÃ­deo del tweet\nDownloads a video link (X/Twitter, YouTube, reels, any yt-dlp site; or path = a local file for a saved link), transcribes it, splits the picture into segments, reads screen text by OCR and summarizes chapters with local models, all on the user's PC. Returns status and the text of level (default brief = card + chapter index) with token counts and the paths of the files (digest.md, frames, contact sheet). focus: what you are looking for, so the summary answers it. Idempotent; queued/running: call again later. force redoes it.\nSinÃ³nimos: mira este vÃ­deo, de quÃ© va el vÃ­deo, resÃºmeme el vÃ­deo, transcribe el tweet, vÃ­deo largo, ver vÃ­deo sin tokens",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute path of a local video/audio file to use as the source",
+              "type": "string",
+              "minLength": 1
+            },
+            "focus": {
+              "description": "What you want from the video; the summary answers it and marks the chapters that matter",
+              "type": "string",
+              "maxLength": 500
+            },
+            "level": {
+              "default": "brief",
+              "type": "string",
+              "enum": [
+                "brief",
+                "card",
+                "index",
+                "visual",
+                "transcript",
+                "full",
+                "none"
+              ]
+            },
+            "force": {
+              "default": false,
+              "type": "boolean"
+            },
+            "redo_media": {
+              "default": false,
+              "description": "With force: also download and transcribe again",
+              "type": "boolean"
+            },
+            "language": {
+              "description": "Spoken language hint for speech to text (es, enâ€¦)",
+              "type": "string",
+              "maxLength": 10
+            },
+            "wait": {
+              "default": true,
+              "type": "boolean"
+            },
+            "timeout_s": {
+              "default": 600,
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 1800
+            },
+            "max_chars": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 400000
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_digest_read",
+        "description": "Read one layer or one time span of a video digest â€” leer el digest, tramo del vÃ­deo\nReturns the text of a finished digest: brief (card + chapter index), card, index, visual (every segment with literal screen text), transcript (literal, timed) or full. from/to (seconds or m:ss) cut the visual and transcript layers to that span, so a long video is read piece by piece.\nSinÃ³nimos: lee la transcripciÃ³n, quÃ© dice entre el minuto 3 y el 5, quÃ© sale en pantalla, capa visual del vÃ­deo",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "level": {
+              "default": "brief",
+              "type": "string",
+              "enum": [
+                "brief",
+                "card",
+                "index",
+                "visual",
+                "transcript",
+                "full"
+              ]
+            },
+            "from": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "to": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "max_chars": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 400000
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_ask",
+        "description": "Ask a question about a digested video, answered with checked quotes â€” pregunta al vÃ­deo\nThe local model answers from the transcript and the screen text (OCR) of one video; every sentence carries citations (s = speech, v = screen) with the time and a verbatim quote that the app checked against the source. Sentences whose quotes do not match are dropped. Needs a digest (video_digest) first.\nSinÃ³nimos: quÃ© dice el vÃ­deo sobre, en quÃ© minuto habla de, pregÃºntale al vÃ­deo, dÃ³nde explica",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "question"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_find",
+        "description": "Search what is said and shown in digested videos â€” buscar en vÃ­deos, texto en pantalla\nFull-text search over transcripts and screen text (OCR) of one video (id/url) or all of them. Each hit has the time, the line with the lines before and after, or the screen text and its frame path.\nSinÃ³nimos: en quÃ© vÃ­deo sale, busca en el vÃ­deo, dÃ³nde aparece en pantalla, minuto en que dice",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "limit": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_frame",
+        "description": "The exact frame of a video at an instant â€” fotograma en el minuto, captura del vÃ­deo\nExtracts the frame at t (seconds or m:ss) of a video whose digest exists and returns its absolute JPEG path, size and the tokens it would cost to look at. Use it only when the digest says the picture matters (a chart, a diagram, a UI).\nSinÃ³nimos: captura en el minuto, saca el fotograma, ensÃ©Ã±ame la imagen del segundo, frame del vÃ­deo",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "t": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "width": {
+              "default": 1024,
+              "type": "integer",
+              "minimum": 160,
+              "maximum": 1920
+            }
+          },
+          "required": [
+            "t"
+          ]
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    },
+    {
+      "schema": {
+        "name": "video_digests",
+        "description": "List the video digests and their state â€” digests de vÃ­deo, vÃ­deos digeridos\nThe latest digests: title, url, status, stage while running, focus, duration and the tokens of their brief level.\nSinÃ³nimos: quÃ© vÃ­deos he digerido, estado del digest, lista de vÃ­deos resumidos",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "limit": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        }
+      },
+      "module": "links",
+      "token_file": "data/native/links/data/mcp-token"
+    }
+  ]
+}

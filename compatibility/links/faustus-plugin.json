@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "x-family": {
+    "copilot": {
+      "version": 1,
+      "info": "/api/copilot/info",
+      "panel": "/api/copilot/panel.js",
+      "proxy": "/api/copilot/proxy",
+      "launcher": "/api/copilot/launcher.js",
+      "context": "window.hoardCopilot.context",
+      "refresh": "window.hoardCopilot.onTurnEnd"
+    },
+    "absorbed_by": {
+      "id": "borges",
+      "repository": "https://github.com/Luissalet/BorgesHoard",
+      "module": "links",
+      "standalone": false
+    },
+    "standalone": false,
+    "compatibility": true,
+    "source_data": "Moved into the merged application; no dependency on the retired repository."
+  },
+  "id": "links",
+  "name": "Links Hoard · Borges",
+  "purpose": "Absorbed by Borges's Hoard. Native compatibility identity only; no standalone server. Read-later bookmark library with extracted article text, tags and highlights, stored locally; also downloads the video, audio or photos behind a link (YouTube, X, Instagram, TikTok…) to disk.",
+  "capabilities": [
+    "bookmarks",
+    "read-later",
+    "extraction",
+    "tags",
+    "highlights",
+    "search",
+    "digest",
+    "import",
+    "watches",
+    "feeds",
+    "github-releases",
+    "page-changes",
+    "event-bus",
+    "media-download",
+    "video-download",
+    "audio-download",
+    "highlights-to-flashcards",
+    "resurface",
+    "time-budgeted-reading-plan",
+    "daily-digest",
+    "job-events"
+  ],
+  "placeholders": [
+    "BORGES_DIR",
+    "APP_URL",
+    "TOKEN_FILE",
+    "PYTHON"
+  ],
+  "defaults": {
+    "APP_URL": "http://127.0.0.1:5184/links",
+    "TOKEN_FILE": "{BORGES_DIR}/data/native/links/data/mcp-token",
+    "BORGES_DIR": "{COMPAT_DIR}/../..",
+    "DATA_DIR": "{BORGES_DIR}/data/native/links/data",
+    "PYTHON": "{BORGES_DIR}/venv/Scripts/python.exe"
+  },
+  "app": {
+    "url_default": "http://127.0.0.1:5184/links",
+    "ui_url": "http://127.0.0.1:5184/",
+    "health": {
+      "path": "/api/health",
+      "expect": {
+        "service": "absorbed-links"
+      }
+    },
+    "identify": {
+      "service": [
+        "links-hoard"
+      ],
+      "title": [
+        "links hoard"
+      ]
+    }
+  },
+  "mcp": {
+    "transport": "stdio",
+    "command": "{PYTHON}",
+    "args": [
+      "{BORGES_DIR}/compatibility/mcp_server.py"
+    ],
+    "env": {
+      "HOARD_COMPAT_ID": "links",
+      "HOARD_COMPAT_URL": "http://127.0.0.1:5184"
+    },
+    "optional_env": []
+  },
+  "notes": "Native compatibility identity owned by Borges's Hoard. Data, tokens and all runtime files belong to the merged application. No retired repository is required. Start the owner explicitly and enable its module."
+}

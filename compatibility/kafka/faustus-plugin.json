@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "id": "kafka",
+  "name": "Kafka's Hoard · Borges",
+  "purpose": "Absorbed by Borges's Hoard. Native compatibility identity only; no standalone server. A local paperwork keeper: it reads invoices, contracts, insurance policies, receipts and warranties, letters from the tax office, the traffic authority or the town hall, fines, ITV and ID documents from uploads, watched folders and the mail account configured in Faustus (attachments included), extracts who issued them, the amounts and every date that matters, turns those dates into deadlines (payments, renewals, the last day to cancel a renewal, end of warranty, end of a commitment period, deadlines to appeal or pay a fine with discount, expiry of IDs, next ITV) counting Spanish working days where the law does, reminds you before each one (the family hub, Windows toast, ntfy, Telegram, email), shows its deadlines in the family agenda, reads paperwork mail through the hub's mail gateway, links invoices to the matching ledger movement, turns meeting action items into deadlines and prepares a tax-return folder and answers questions with citations to the document and page. It also has a workshop for the files themselves: merge, split, reorder, rotate, compress, password-protect, watermark and describe PDFs, turn photos or Word documents into PDF, render pages as images and shrink PNG, JPEG and WEBP images under a size limit, always into new files. Everything stays on the computer.",
+  "capabilities": [
+    "paperwork",
+    "documents",
+    "document-text-comparison",
+    "deadlines",
+    "invoices",
+    "contracts",
+    "insurance",
+    "warranties",
+    "fines",
+    "renewals",
+    "working-days",
+    "ocr",
+    "pdf",
+    "pdf-tools",
+    "owned-pdf-engine",
+    "pdf-paragraph-editing",
+    "pdf-artifact-revisions",
+    "pdf-merge",
+    "pdf-compress",
+    "image-compress",
+    "mail-import",
+    "folder-watch",
+    "reminders",
+    "notifications",
+    "windows-toast",
+    "ntfy",
+    "telegram",
+    "email",
+    "price-changes",
+    "search",
+    "citations",
+    "dashboard",
+    "family-agenda",
+    "hub-notifications",
+    "hub-mail",
+    "tax-pack",
+    "ledger-link",
+    "minutes-deadlines"
+  ],
+  "placeholders": [
+    "BORGES_DIR",
+    "APP_URL",
+    "TOKEN_FILE",
+    "PYTHON"
+  ],
+  "defaults": {
+    "APP_URL": "http://127.0.0.1:5184/paperwork",
+    "TOKEN_FILE": "{BORGES_DIR}/data/native/paperwork/data/mcp-token",
+    "PYTHON": "{BORGES_DIR}/venv/Scripts/python.exe",
+    "BORGES_DIR": "{COMPAT_DIR}/../..",
+    "DATA_DIR": "{BORGES_DIR}/data/native/paperwork/data"
+  },
+  "app": {
+    "url_default": "http://127.0.0.1:5184/paperwork",
+    "ui_url": "http://127.0.0.1:5184/",
+    "health": {
+      "path": "/api/health",
+      "expect": {
+        "service": "absorbed-kafka"
+      }
+    },
+    "identify": {
+      "service": [
+        "kafka-hoard"
+      ],
+      "title": [
+        "kafka's hoard",
+        "papeles y plazos"
+      ]
+    }
+  },
+  "mcp": {
+    "transport": "stdio",
+    "command": "{PYTHON}",
+    "args": [
+      "{BORGES_DIR}/compatibility/mcp_server.py"
+    ],
+    "env": {
+      "HOARD_COMPAT_ID": "kafka",
+      "HOARD_COMPAT_URL": "http://127.0.0.1:5184"
+    },
+    "optional_env": []
+  },
+  "notes": "Native compatibility identity owned by Borges's Hoard. Data, tokens and all runtime files belong to the merged application. No retired repository is required. Start the owner explicitly and enable its module.",
+  "x-family": {
+    "agenda": true,
+    "copilot": true,
+    "absorbed_by": {
+      "id": "borges",
+      "repository": "https://github.com/Luissalet/BorgesHoard",
+      "module": "paperwork",
+      "standalone": false
+    },
+    "standalone": false,
+    "compatibility": true,
+    "source_data": "Moved into the merged application; no dependency on the retired repository."
+  }
+}

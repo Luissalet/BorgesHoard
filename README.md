@@ -231,3 +231,10 @@ MIT — Luissalet.
 PPTX files use the existing Hoard Link reader, with no extra dependency. Text boxes, tables and speaker notes are indexed per slide, in presentation order. Empty slides keep their physical position; short slides are never merged. Citations name the file and slide (`«deck.pptx», diap. 3`). `library_read` accepts that slide number through `page`, or the returned `chunk_id`. Images and charts are not OCR'd; old binary `.ppt` files are not supported. The chunk version is now 4, so the next scan rebuilds indexes made with older boundaries.
 
 The slide and relationship model follows the [PresentationML structure](https://learn.microsoft.com/en-us/office/open-xml/presentation/structure-of-a-presentationml-document).
+
+
+## Owned data and compatibility
+
+Native module data can be relocated into `data/native/<module>/data`, with per-module configuration beside it. Writer fiction uses the owning desktop profile `writers-hoard/fiction/data`. Move complete data trees, including SQLite WAL/SHM, media, downloaded models and browser sessions; update saved absolute paths before enabling a module. The compatibility manifests in `compatibility/<id>/faustus-plugin.json` preserve native IDs, tool schemas and tokens without a retired checkout. Add each merged application's `compatibility` directory to Hub roots before the general repository root. Discovery and compatibility bridges never start an application. All modules remain OFF during relocation.
+
+Legacy in-place adoption scripts are optional import helpers; keeping the old repository is unnecessary once relocation and route updates have been verified.

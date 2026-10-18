@@ -162,3 +162,10 @@ MIT — Luissalet.
 ## Diapositivas de PowerPoint
 
 Los archivos PPTX se leen con el lector común de Hoard Link, sin dependencias nuevas: cuadros de texto, tablas y notas de orador, separados por diapositiva y en el orden de la presentación. Las diapositivas vacías no desplazan la numeración y las cortas no se mezclan. Las citas indican archivo y diapositiva (`«presentacion.pptx», diap. 3`). `library_read` admite ese número en `page`, o el `chunk_id` de la búsqueda. No aplica OCR a imágenes ni gráficos, ni admite el formato binario `.ppt`. La versión de troceado pasa a 4; el próximo escaneo reconstruye índices con límites anteriores.
+
+
+## Datos propios y compatibilidad
+
+Los datos nativos pueden trasladarse a `data/native/<módulo>/data`, con configuración privada junto a cada módulo. La ficción de Writer utiliza su perfil de escritorio `writers-hoard/fiction/data`. Traslada árboles completos, incluidos WAL/SHM de SQLite, medios, modelos descargados y sesiones del navegador; actualiza las rutas absolutas guardadas antes de activar el módulo. Los manifiestos de `compatibility/<id>/faustus-plugin.json` conservan identidades, nombres de herramientas y tokens sin necesitar el repositorio retirado. Añade el directorio `compatibility` de cada producto a las raíces del Hub antes de la raíz general. El catálogo y los puentes compatibles nunca arrancan aplicaciones. Todos los módulos permanecen apagados durante el traslado.
+
+Las instrucciones anteriores de adopción in-place describen una importación opcional. Una vez comprobados el traslado y las rutas, ya no es necesario conservar las carpetas de los productos antiguos.
