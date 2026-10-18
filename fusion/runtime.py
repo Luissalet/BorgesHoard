@@ -10,6 +10,7 @@ import json
 import secrets
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -145,6 +146,15 @@ def create_runtime(*, name, product, root, data_dir, specs, factory, port):
         verdict = check_request(request.method, dict(request.headers), port, (), strict_ports=True)
         if verdict:
             return JSONResponse({"error": verdict[1]}, status_code=verdict[0])
+        # The shared launcher uses root-relative relay URLs. Keep the original
+        # app/data-space identity when it is opened from a native module page.
+        if request.url.path.startswith('/api/copilot/'):
+            referer = urlsplit(request.headers.get('referer', ''))
+            key = referer.path.strip('/').split('/', 1)[0]
+            if referer.netloc == request.url.netloc and key in modules:
+                from .native_response import NativeResponse
+                return NativeResponse(modules[key], request.url.path.lstrip('/'),
+                                      name=name, product=product, on_quit=persist)
         return await call_next(request)
 
     def authorize(request):
@@ -260,8 +270,6 @@ def create_runtime(*, name, product, root, data_dir, specs, factory, port):
         module = module_for(key)
         if path in ('favicon.ico', 'icon-192.png', 'icon-512.png'):
             return FileResponse(root / 'web' / path)
-        if path.startswith("api/copilot/"):
-            return RedirectResponse("/" + path, status_code=307)
         if module.app is None and not path.startswith("api/"):
             return RedirectResponse("/#" + key, status_code=303)
         from .native_response import NativeResponse

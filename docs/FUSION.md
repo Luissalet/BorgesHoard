@@ -33,3 +33,7 @@ Arrancar explícitamente desde el Hub o con `python -m borges --no-browser`. El 
 `python -m pytest tests` incluye la biblioteca y la integración real de los tres motores con datos sintéticos. `links_native/tests` conserva las regresiones Node y `legacy_tests/kafka` las de trámites. Los tests históricos de arranque automático se han sustituido por pruebas de catálogo inerte; el E2E activa explícitamente Biblioteca y mantiene sus comprobaciones de extracción, búsqueda y citas. Ninguna prueba de migración abre los datos reales.
 
 Procedencia exacta en `provenance/sources.json`; las licencias MIT y las licencias del motor PDF se conservan. Las capturas y resultados privados de aceptación no forman parte de la publicación.
+
+## Conversaciones de Faustus
+
+Cada interfaz nativa conserva su identidad y copilot-space-id originales. El lanzador común se sirve sin cambios; las peticiones relativas a la raíz se envían al módulo de la página de origen. Biblioteca conserva Borges, Lecturas conserva Links y Trámites conserva Kafka, con el contexto y las herramientas de esa interfaz. Consultar el panel de un módulo apagado no lo activa.
