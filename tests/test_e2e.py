@@ -60,7 +60,9 @@ def test_subprocess_http_and_mcp_bridge(app_process, library):
     health = httpx.get(f"{url}/api/health").json()
     assert health["service"] == "borges-hoard" and health["dataDirConfigured"] is True
     tools = httpx.get(f"{url}/api/agent/tools").json()["tools"]
-    assert [t["name"] for t in tools][:2] == ["library_search", "library_read"]
+    assert {t["name"] for t in tools} >= {"borges_modules", "library_search", "library_read", "list_links", "doc_search"}
+    assert all(not module['enabled'] for module in health['modules'])
+    assert httpx.put(f"{url}/api/modules/library", json={'enabled': True}).status_code == 200
 
     token = (data_dir / "mcp-token").read_text().strip()
     assert len(token) >= 32
@@ -71,7 +73,7 @@ def test_subprocess_http_and_mcp_bridge(app_process, library):
 
     deadline = time.time() + 60
     while time.time() < deadline:
-        status = httpx.get(f"{url}/api/status").json()
+        status = httpx.get(f"{url}/library/api/status").json()
         if status["counts"]["documents"] >= 8 and not status["worker"]["busy"]:
             break
         time.sleep(0.3)

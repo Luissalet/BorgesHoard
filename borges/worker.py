@@ -47,7 +47,7 @@ class IndexWorker:
             event.set()
         self._queue.put(None)
         if self._thread:
-            self._thread.join(timeout=15)
+            self._thread.join()
 
     def running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())

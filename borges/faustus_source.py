@@ -321,7 +321,7 @@ class FaustusScheduler:
     def stop(self) -> None:
         self._stop.set()
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join()
 
     def _run(self) -> None:
         while not self._stop.wait(self.check_seconds):

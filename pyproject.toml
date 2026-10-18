@@ -30,7 +30,7 @@ gpu = ["fastembed-gpu>=0.7"]
 borges-hoard = "borges.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["borges*"]
+include = ["borges*", "fusion*", "kafka_hoard*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

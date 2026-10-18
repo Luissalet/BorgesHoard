@@ -29,6 +29,7 @@ class Config:
     autostart: bool = True  # start the worker and preload the model with the app
     allowed_hosts: tuple[str, ...] = ()  # extra Host values (exact or *.suffix) besides localhost
     data_dir_configured: bool = False
+    defer_stale: bool = False  # merged shell requires an explicit automation choice
 
     @property
     def db_path(self) -> Path:

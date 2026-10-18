@@ -1,0 +1,637 @@
+// Tools exposed to the assistant. One list drives /api/agent/call and the
+// MCP bridge (server/mcp.js). Descriptions end with a "Sinónimos:" line of
+// Spanish words for the client's tool index.
+import { SINCE_HELP } from "./since.js";
+import { z } from "zod";
+import * as links from "./links.js";
+import * as highlights from "./highlights.js";
+import { enqueueFetch, waitForFetch } from "./fetcher.js";
+import { importTranscript } from "./transcript.js";
+import * as watches from "./watches.js";
+import * as media from "./media.js";
+import * as sessions from "./site-login.js";
+import * as video from "./videoinsight.js";
+import * as digest from "./videodigest.js";
+import { highlightsToCards, DEFAULT_DECK } from "./cards.js";
+import { resurface, resurfaceSettings } from "./resurface.js";
+import { readingPlan, readingPlanInput } from "./reading-plan.js";
+import { articleSource } from "./article-source.js";
+import { askLink } from "./article-questions.js";
+
+export const AGENT_INSTRUCTIONS = `Links Hoard is the user's read-it-later library: saved pages with extracted text, tags and highlights.
+Summarize or quote a link only from the text read_link returns, never from the title or URL alone — the title can be misleading and the page may not be fetched yet.
+save_link is idempotent on the normalized URL: calling it twice for the same page returns the existing link (existing: true) instead of duplicating it.
+save_link waits briefly for the background fetch so it can report the real title and excerpt; if fetch_status comes back "pending" or "failed", say so plainly instead of inventing a summary — offer refetch_link or suggest the user opens the page.
+Prefer list_links or search_links before read_link when you are not sure which link the user means.
+ask_link answers a question from saved text through the Hub model, with versioned paragraph anchors and exact quotes. Report coverage and failures. Quote presence verifies textual provenance, not the model's interpretation. read_link_paragraphs returns the same complete paragraph IDs used by the reader. Neither tool refetches or edits the saved link.
+For a saved YouTube video whose read_link text is empty or only metadata, import_video_transcript obtains available captions, then read_link can quote and summarize them.
+Favorite is a dedicated boolean state, not a tag: use mark_link with state "favorite". tag_link only changes labels, even if a label is named "favorita".
+Dates are ISO ("YYYY-MM-DD" or full ISO timestamps). link_digest groups what was saved since a date by site, for a weekly recap.
+delete_link is irreversible: confirm with the user before calling it.
+highlights_to_cards turns the user's highlights into Hypatia flashcards (deck "Lecturas") through the hub; report the status it returns, and say plainly when the hub or Hypatia is not there. resurface answers "what should I read today": quote the title, site and reason of each item and open nothing without being asked.
+reading_plan selects complete unread saved texts for the user's available minutes and assumed reading speed. Report estimates, not guaranteed duration. It never fetches pages, marks links read or changes the daily resurfacing list; use read_link before summarizing any selected text.
+Watches bring things in: watch_add follows an RSS/Atom feed, a GitHub repository (releases, tags or commits) or a page (text changes); every new entry becomes a watch item and, with auto_save, a saved link. watch_items lists what arrived (unread first); watch_check polls now instead of waiting for the schedule.
+A finished download also lists its files in deliverables: an assistant that can hand files to the user (Faustus turns them into download links that work on the desktop and on the phone) should give the user those links; the file stays in the downloads folder and the link in the library either way.
+When the user asks to download a link ("descárgame esto", "bájame este vídeo", "sácame el audio", "pásalo a mp3", a reel, a tweet, a photo carousel), call media_download — not save_link, which only bookmarks the page. format auto downloads the video and falls back to the photos of a post that has no video; audio gives an MP3; image forces photos. By default it waits for the file and returns its absolute path and size: report that exact path to the user, and never say a download worked unless the result has ok: true and at least one file. If it comes back still running (status downloading), follow it with media_status; if it failed, tell the user the error in plain words and offer media_retry. media_probe and media_info show what a link holds (title, duration, available heights, playlist or photo post) without downloading; media_subtitles reads its captions; media_audio_for_asr gives a mono 16 kHz WAV for transcription. media_tools shows whether yt-dlp, gallery-dl and ffmpeg are installed and can update them. media_cancel stops a download; media_delete removes the record, and its files only with delete_files plus confirm: true after the user agreed. A public YouTube video downloads without an account (the app retries with alternative YouTube players when YouTube asks for a sign-in). When a download fails because the site wants an account, the result carries login: { site, label }: offer site_login, which opens a browser window on the computer where Links runs so the user signs in there (never ask for or type the password yourself); once site_sessions shows that site signed in, call media_retry. site_logout forgets a site's session.
+For a saved video link (a reel, a short, a video page) link_video gives its transcript with timestamps and its key frames (images with their time and an absolute path) once the background analysis has run; quote the transcript only from what it returns and report its status plainly (transcript.status: done, skipped = no speech-to-text engine was available, no_audio, failed). link_video_analyze starts or repeats that analysis from a file path the user gave, from a finished download, or (download: true) by downloading the video; link_video_search finds the spoken words across all transcripts with their time.
+To understand a video without spending your own context on frames (a tweet with a video, a YouTube link, a reel, a long talk), call video_digest with its url: the app downloads it, transcribes it and reads the screen locally, and returns a layered dossier. Read the "brief" level first (card + chapter index, a few thousand tokens), then only what you need: video_digest_read for a layer or a time span, video_ask for a question answered with checked verbatim quotes and timestamps, video_find to search words or screen text, video_frame for the exact frame at an instant (its path; open it only when the text says the picture matters). Transcript and OCR are literal; anything marked "generado" was written by a local model, so verify it with its timestamp before stating it as fact. A digest of a long video can take many minutes: if it comes back queued or running, call video_digest again later with the same url (it does not restart).`;
+
+const fail = (message, extra = {}) => { throw Object.assign(new Error(message), { status: 400, ...extra }); };
+
+function resolveLinkOrFail({ id, url }) {
+  if (id) {
+    const link = links.getLink(id);
+    if (link) return link;
+    fail(`No existe un enlace con id "${id}".`);
+  }
+  if (url) {
+    const link = links.getLinkByUrl(url);
+    if (link) return link;
+    fail(`No tienes guardada esa URL. Usa save_link primero.`);
+  }
+  fail("Indica id o url.");
+}
+
+const present = (link) => ({
+  id: link.id,
+  url: link.url,
+  title: link.title,
+  site: link.site,
+  excerpt: link.excerpt,
+  byline: link.byline,
+  kind: link.kind,
+  saved_at: link.saved_at,
+  read_at: link.read_at,
+  archived: link.archived,
+  favorite: link.favorite,
+  tags: link.tags,
+  notes: link.notes,
+  fetch_status: link.fetch_status,
+  fetch_error: link.fetch_error || undefined,
+  word_count: link.word_count,
+});
+
+const tool = (name, description, schema, hints, run) => ({
+  name,
+  description,
+  schema,
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, ...hints },
+  run,
+});
+const RO = { readOnlyHint: true, idempotentHint: true };
+const SECTIONS = z.array(z.tuple([z.number().min(0), z.number().positive()])).max(10).optional()
+  .describe("Only these parts: [[start_s, end_s], ...] (at most 10, 0 <= start < end); several parts give one file each");
+
+/** What the assistant sees of a download: the facts it must report, with absolute paths. */
+function agentView(row, { started = false, existing, detail = false } = {}) {
+  const files = (row.files || []).map((f) => ({ path: f.path, name: f.name, size: f.size, kind: f.kind }));
+  const active = media.ACTIVE_STATUSES.includes(row.status);
+  const out = {
+    id: row.id,
+    ok: row.status === "done" && files.length > 0,
+    status: row.status,
+    platform: row.platform,
+    format: row.format,
+    kind: row.kind || undefined,
+    title: row.title || undefined,
+    uploader: row.uploader || undefined,
+    dir: row.dir,
+    files,
+    total_bytes: row.total_bytes || undefined,
+    link_id: row.link_id || undefined,
+    ...(active ? { progress: row.progress, speed: row.speed || undefined, eta: row.eta || undefined, detail: row.detail || undefined } : {}),
+    ...(row.status === "failed" || row.status === "cancelled" ? { error: row.error } : {}),
+    ...(row.status === "failed" && row.login ? { login: row.login } : {}),
+    ...(row.status === "done" && row.detail ? { note: row.detail } : {}),
+    // the files the user asked for: an assistant that can hand files over (Faustus) turns these into download links
+    ...(row.status === "done" && files.length ? { deliverables: files.filter((f) => f.path).map((f) => ({ path: f.path, name: f.name || undefined })) } : {}),
+    ...(existing ? { existing: true } : {}),
+  };
+  if (detail) Object.assign(out, { url: row.url, upload_date: row.upload_date || undefined, duration: row.duration || undefined, description: row.description ? row.description.slice(0, 1000) : undefined, created_at: row.created_at, finished_at: row.finished_at || undefined });
+  if (started || active) out.message = active ? "Sigue en curso: consulta media_status con este id; no digas que está descargado hasta que ok sea true." : undefined;
+  if (row.status === "done" && !files.length) out.message = "Terminó pero no hay archivos en el resultado: no lo des por descargado.";
+  return out;
+}
+
+
+export const TOOLS = [
+  tool("save_link",
+    "Save a URL to the read-later library (idempotent; waits for the fetch).\nSave a URL to the read-later library. Idempotent on the normalized URL (strips tracking params and trailing slash): saving an already-saved page returns it unchanged with existing: true. Waits up to 10s for the background fetch so it can return the real title, site and excerpt; if the fetch is still pending or failed, that is reported instead of guessed.\nSinónimos: guarda esto, guardar enlace, para luego, guarda este artículo, marcador, guardar página",
+    z.object({
+      url: z.string().trim().min(1).describe("The URL to save"),
+      tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+      note: z.string().trim().max(5000).default(""),
+    }), { idempotentHint: true },
+    async ({ url, tags, note }) => {
+      const { link, existing } = links.createLink({ url, tags, note, source: "agent" });
+      if (!existing) enqueueFetch(link.id, link.url);
+      await waitForFetch(link.id, 10_000);
+      return { ...present(links.getLink(link.id)), existing };
+    }),
+
+  tool("list_links",
+    "List saved links by state, tag, site or date.\nList saved links, most recent first. state: unread (default), read, archived or all. Optional tag, site and since (an ISO date, an age like 7d or hace 2 horas, or hoy/ayer/esta semana). Paginated (limit up to 100).\nSinónimos: enlaces, lo que guardé, bandeja, qué tengo guardado, lista de lecturas, pendientes de leer",
+    z.object({
+      state: z.enum(["unread", "read", "archived", "all"]).default("unread"),
+      tag: z.string().max(40).optional(),
+      site: z.string().max(200).optional(),
+      since: z.string().max(40).optional().describe(SINCE_HELP),
+      limit: z.number().int().min(1).max(100).default(30),
+      cursor: z.number().int().min(0).default(0).describe("Offset for paging; use next_cursor from the previous call"),
+    }), RO,
+    (a) => {
+      const out = links.listLinks({ state: a.state, tag: a.tag, site: a.site, since: a.since, limit: a.limit, cursor: a.cursor });
+      return { total: out.total, items: out.items.map(present), next_cursor: out.nextCursor };
+    }),
+
+  tool("search_links",
+    "Full-text search over saved links.\nFull-text search over title, description, extracted content, notes and tags. Returns the same shape as list_links.\nSinónimos: buscar enlace, encontrar artículo, buscar en lo guardado, dónde leí, busca esto",
+    z.object({ q: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).default(30) }), RO,
+    ({ q, limit }) => {
+      const out = links.listLinks({ state: "all", q, limit });
+      return { total: out.total, items: out.items.map(present), fts_enabled: out.ftsEnabled };
+    }),
+
+  tool("read_link",
+    "Read a saved link's extracted text, paginated; summarize only from it.\nRead a saved link's extracted text, paginated by characters (max_chars, default 4000; offset to page further). Identify by id or url. Returns title, byline, site, the text slice, whether more remains, and highlights. Summarize only from this text, never from the title alone.\nSinónimos: leer artículo, texto del enlace, qué dice, contenido del artículo, léeme esto",
+    z.object({
+      id: z.string().optional(),
+      url: z.string().optional(),
+      offset: z.number().int().min(0).default(0),
+      max_chars: z.number().int().min(200).max(20000).default(4000),
+    }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const text = link.content_text || "";
+      const slice = text.slice(a.offset, a.offset + a.max_chars);
+      return {
+        id: link.id,
+        url: link.url,
+        title: link.title,
+        byline: link.byline,
+        site: link.site,
+        kind: link.kind,
+        fetch_status: link.fetch_status,
+        fetch_error: link.fetch_error || undefined,
+        text: slice,
+        offset: a.offset,
+        total_chars: text.length,
+        has_more: a.offset + slice.length < text.length,
+        highlights: highlights.listHighlights(link.id),
+      };
+    }),
+
+  tool("read_link_paragraphs",
+    "Read saved article paragraphs with versioned reader anchors.\nReturns whole paragraphs paginated by index; offset counts paragraphs. IDs change when content changes.\nSinónimos: párrafos del artículo, pasajes, anclas, leer origen de una cita",
+    z.object({ id: z.string().optional(), url: z.string().optional(), offset: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(100).default(30) }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a), source = articleSource(link);
+      return { id: link.id, title: link.title, fetch_status: link.fetch_status, source_version: source.version,
+        paragraphs: source.paragraphs.slice(a.offset, a.offset + a.limit), offset: a.offset,
+        total_paragraphs: source.paragraphs.length, has_more: a.offset + a.limit < source.paragraphs.length };
+    }),
+
+  tool("ask_link",
+    "Ask a question about saved article text, with paragraph citations.\nUses the Hub model; returns sentences with exact quotes, reader_url anchors and source_version. Reports partial context, invalid quotes, unavailable model or changed text. Exact quote checks do not verify interpretation. Does not fetch or edit the article.\nSinónimos: preguntar al artículo, responder con citas, explicar este enlace, respuesta con párrafos",
+    z.object({ id: z.string().optional(), url: z.string().optional(), question: z.string().trim().min(1).max(2000) }),
+    { readOnlyHint: true, openWorldHint: true },
+    (a) => askLink(resolveLinkOrFail(a).id, { question: a.question })),
+
+  tool("tag_link",
+    "Add or remove labels only; this does not mark a link as favorite.\nUse id or url. Unlisted tags are left untouched. A tag named favorita is still just a label; use mark_link with state favorite to change actual favorite status.\nSinónimos: etiquetar, poner etiqueta, quitar etiqueta, clasificar enlace",
+    z.object({
+      id: z.string().optional(),
+      url: z.string().optional(),
+      add: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+      remove: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+    }), { idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const set = new Set(link.tags);
+      for (const t of a.add) set.add(t);
+      for (const t of a.remove) set.delete(t);
+      const updated = links.updateLink(link.id, { tags: [...set] });
+      return { ...present(updated), state_hint: "Only tags changed. To set actual favorite status, use mark_link with state favorite." };
+    }),
+
+  tool("edit_link",
+    "Edit a saved link's title, notes or tags; omitted fields stay unchanged.\nRead the current link first. tags_add/tags_remove preserve other labels.\nSinónimos: editar enlace, cambiar título, escribir notas, añadir etiquetas",
+    links.patchInput.extend({ id: z.string().optional(), url: z.string().optional() }),
+    { idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const { id, url, ...patch } = a;
+      return present(links.updateLink(link.id, patch));
+    }),
+
+  tool("mark_link",
+    "Set actual read, archive or favorite status (not a tag).\nSet state to read, unread, archived or favorite; on/off toggles it (default true). To mark a link as favorite, use this tool with state favorite, not tag_link.\nSinónimos: marcar leído, marcar como leído, archivar, marcar favorito, destacar, marcar sin leer",
+    z.object({
+      id: z.string().optional(),
+      url: z.string().optional(),
+      state: z.enum(["read", "unread", "archived", "favorite"]),
+      on: z.boolean().default(true),
+    }), { idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      if (a.state === "read") return present(links.markRead(link.id, a.on));
+      if (a.state === "unread") return present(links.markRead(link.id, !a.on));
+      if (a.state === "archived") return present(links.setArchived(link.id, a.on));
+      return present(links.setFavorite(link.id, a.on));
+    }),
+
+  tool("add_highlight",
+    "Save a verbatim quote from read_link, with an optional note. Identify the link by id or url.\nThe quote must appear in the extracted article text; read_link first. If extraction is pending or failed, do not invent a quote.\nSinónimos: subrayar, destacar texto, guardar cita, anotar frase",
+    z.object({ id: z.string().optional(), url: z.string().optional(), text: z.string().trim().min(1).max(5000), note: z.string().trim().max(2000).default("") }), { idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const source = (link.content_text || "").replace(/\s+/gu, " ").trim();
+      if (!source) fail("No hay texto extraído para citar. Espera a la descarga o usa refetch_link.");
+      if (!source.includes(a.text.replace(/\s+/gu, " ").trim())) {
+        fail("La cita no aparece en el texto extraído. Usa read_link y copia un fragmento literal.");
+      }
+      const previous = highlights.listHighlights(link.id).find((h) => h.text === a.text && h.note === a.note);
+      if (previous) return { ...previous, existing: true };
+      return { ...highlights.addHighlight(link.id, { text: a.text, note: a.note }), existing: false };
+    }),
+
+  tool("import_video_transcript",
+    "Import subtitles of a saved YouTube video into searchable text.\nDownloads available Spanish or English captions, not the video, and makes them available to read_link, search_links and highlights. Requires Python yt-dlp; reports when captions are unavailable. Identify the saved video by id or url.\nSinónimos: transcribir vídeo, leer subtítulos, importar transcripción, resumir vídeo de YouTube",
+    z.object({ id: z.string().optional(), url: z.string().optional() }), { idempotentHint: true, openWorldHint: true },
+    (a) => importTranscript(resolveLinkOrFail(a))),
+
+  tool("link_digest",
+    "Links saved since a date or an age (\"7d\", \"esta semana\"), with excerpts, grouped by site. Weekly recap.\nSinónimos: resumen de la semana, qué guardé esta semana, digest, novedades guardadas",
+    z.object({ since: z.string().trim().max(40).default("7d").describe(SINCE_HELP) }), RO,
+    ({ since }) => {
+      const out = links.digestSince(since);
+      return {
+        since: out.since,
+        total: out.total,
+        sites: out.sites.map((s) => ({ site: s.site, count: s.count, links: s.links.map(present) })),
+      };
+    }),
+
+  tool("refetch_link",
+    "Re-download and re-extract a saved link's page.\nRe-download and re-extract a saved link's page (id or url). Use when fetch_status is failed or the page changed.\nSinónimos: reintentar descarga, actualizar artículo, volver a leer, refrescar enlace",
+    z.object({ id: z.string().optional(), url: z.string().optional() }), { idempotentHint: true },
+    async (a) => {
+      const link = resolveLinkOrFail(a);
+      links.markFetchPending(link.id);
+      enqueueFetch(link.id, link.url);
+      await waitForFetch(link.id, 10_000);
+      return present(links.getLink(link.id));
+    }),
+
+  tool("delete_link",
+    "Permanently delete a saved link and its highlights (id or url). Irreversible; confirm with the user first.\nSinónimos: borrar enlace, eliminar artículo, quitar de la lista",
+    z.object({ id: z.string().optional(), url: z.string().optional() }), { destructiveHint: true, idempotentHint: true },
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      links.deleteLink(link.id);
+      return { deleted: present(link) };
+    }),
+
+  tool("watch_add",
+    "Follow a feed, a GitHub repository or a page for new things.\nFollow a URL for new things: an RSS/Atom feed, a GitHub repository (releases by default; github: tags|commits) or a plain page (text changes). Auto-detects the kind (a page that advertises a feed becomes a feed watch). Checked every every_min minutes (default 60); new entries become watch items and, with auto_save (default), saved links with the given tags. The first check is a baseline: existing entries are not 'new'.\nSinónimos: sigue este feed, avísame cuando, vigilar página, suscribirme, nuevas releases, cuando cambie, seguir repositorio",
+    z.object({
+      url: z.string().trim().min(1).describe("Feed, GitHub repository or page URL"),
+      kind: z.enum(["auto", "feed", "github", "page"]).default("auto"),
+      name: z.string().trim().max(200).default(""),
+      every_min: z.number().int().min(5).max(10080).default(60),
+      tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+      auto_save: z.boolean().default(true),
+      github: z.enum(["releases", "tags", "commits"]).default("releases"),
+    }), { idempotentHint: true },
+    async (a) => {
+      const out = await watches.addWatch(a);
+      return { ...out.watch, existing: out.existing, baseline_items: out.first_check ? out.first_check.watch.item_count : undefined,
+               first_check_error: out.first_check && !out.first_check.ok ? out.first_check.error : undefined };
+    }),
+
+  tool("watch_list",
+    "List the watches with last check, error and item count.\nList the watches (feeds, GitHub repositories, pages) with kind, interval, last check, last error and item count.\nSinónimos: qué sigo, mis feeds, vigilancias, suscripciones, qué estoy siguiendo",
+    z.object({}), RO,
+    () => ({ watches: watches.listWatches(), stats: watches.stats() })),
+
+  tool("watch_items",
+    "What the watches brought in: entries, releases, changes.\nWhat the watches brought in: new feed entries, releases and page changes, newest first. unread (default true) hides dismissed items; since is an ISO date; watch_id narrows to one watch. Each item has title, url, summary, published_at and the saved link_id when auto_save applied.\nSinónimos: novedades, qué hay nuevo, qué ha salido, últimas releases, cambios, lo que llegó",
+    z.object({
+      watch_id: z.string().optional(),
+      since: z.string().optional(),
+      unread: z.boolean().default(true),
+      limit: z.number().int().min(1).max(200).default(30),
+    }), RO,
+    (a) => ({ items: watches.listItems({ watch_id: a.watch_id || null, since: a.since || null, unread: a.unread, limit: a.limit }) })),
+
+  tool("watch_check",
+    "Check a watch now (or every due one) and return what was new.\nCheck a watch now (or every due watch when watch_id is omitted) instead of waiting for its schedule; returns what was new.\nSinónimos: comprueba ahora, actualiza el feed, mira si hay algo nuevo, refrescar vigilancias",
+    z.object({ watch_id: z.string().optional() }), { idempotentHint: true },
+    async (a) => {
+      if (a.watch_id) return await watches.checkWatch(a.watch_id);
+      return { results: await watches.checkDue() };
+    }),
+
+  tool("watch_dismiss",
+    "Mark a watch item as seen (or unseen with dismissed=false) so it leaves the unread list.\nSinónimos: visto, descartar novedad, marcar como leído, ya lo vi",
+    z.object({ item_id: z.string(), dismissed: z.boolean().default(true) }), { idempotentHint: true },
+    (a) => watches.dismissItem(a.item_id, a.dismissed)),
+
+  tool("watch_remove",
+    "Stop following a watch (its items stay; saved links stay). Confirm with the user first.\nSinónimos: deja de seguir, quitar feed, cancelar suscripción, dejar de vigilar",
+    z.object({ watch_id: z.string() }), { destructiveHint: true },
+    (a) => ({ ok: true, removed: watches.removeWatch(a.watch_id) })),
+
+  tool("highlights_to_cards",
+    "Turn saved highlights into Hypatia flashcards — subrayados a tarjetas, enviar a Hypatia\nSends highlights (default: every one not sent yet) to Hypatia through the hub as flashcards: front = the highlighted text, back = your note and the article title, source_ref = hoard://links/highlight/<id>. Each highlight goes once. Returns ok, status (ok, nothing_new, hub_down, hypatia_unavailable, hypatia_error, unknown_link), sent and skipped; never claims cards were made when status is not ok.\nSinónimos: pasar subrayados a tarjetas, flashcards de lo que leí, estudiar mis subrayados, mandar a Hypatia, tarjetas de lecturas, repasar lo subrayado",
+    z.object({
+      link_id: z.string().optional().describe("Only the highlights of this saved link"),
+      url: z.string().optional().describe("Only the highlights of the saved link with this URL"),
+      since: z.string().optional().describe(SINCE_HELP),
+      deck: z.string().trim().min(1).max(120).default(DEFAULT_DECK).describe(`Hypatia deck (default "${DEFAULT_DECK}")`),
+      resend: z.boolean().default(false).describe("Send again highlights that already went; Hypatia does not duplicate a card"),
+    }), { idempotentHint: true },
+    (a) => highlightsToCards(a)),
+
+  tool("resurface",
+    "What to read today from the saved-but-unread — para leer hoy, rescata enlaces\nPicks count links (default 3) worth reading now: unread for a while (older first), favourites, ones with highlights and topics the user reads weigh more; a read link with highlights comes back for a re-read after two weeks. Never the same link twice within 14 days (30 for a re-read). The list is the same all day and changes tomorrow; each item says why (reason).\nSinónimos: qué leo hoy, algo para leer, rescatar enlaces, lecturas pendientes, qué tengo sin leer, recomiéndame un artículo",
+    z.object({ count: z.number().int().min(1).max(10).optional() }), { idempotentHint: true },
+    (a) => resurface(a.count ?? resurfaceSettings().count)),
+
+  tool("reading_plan",
+    "Plan saved unread texts within your reading time — lecturas que caben en tus minutos\nUses known word counts and an assumed speed (default 200 words/minute), rounding each complete text up to a minute. Selects the fullest estimated budget up to max_items; ties favour favourites, fewer texts and older entries. Optional exact tag and site filters. Returns selected links, estimated/unused minutes and exclusions for missing text/counts or unsupported kinds. Does not fetch, mark read, reserve links or change daily resurfacing.\nSinónimos: tengo veinte minutos, plan de lectura, lecturas cortas, qué puedo leer en diez minutos, tiempo para leer, reading time budget",
+    readingPlanInput, RO,
+    (a) => readingPlan(a)),
+
+  tool("list_tags",
+    "List every tag in use (excluding archived links) with counts, most used first.\nSinónimos: etiquetas, qué etiquetas tengo, lista de etiquetas",
+    z.object({}), RO,
+    () => ({ tags: links.listTags() })),
+  tool("media_download",
+    "Download video, audio or photos from a URL — descargar, bájame vídeo, audio, fotos.\nSaves content to disk (yt-dlp / gallery-dl), not save_link. format auto|video|audio|image; quality/max_height cap resolution; sections cut ranges; save_link bookmarks with tag descarga. Waits by default; returns absolute path and size. Success only if ok and files non-empty; running: media_status; failed: media_retry.\nSinónimos: descárgame esto, descarga este vídeo, bájame, bájate, guarda el vídeo, sácame el audio, pásalo a mp3, descargar de YouTube, descargar reel, descargar tweet, bajar música, guardar el vídeo en el disco, download video, Instagram fotos",
+    z.object({
+      url: z.string().trim().min(1).describe("Link to the video, audio or post (YouTube, X, Instagram, TikTok, …)"),
+      format: z.enum(media.FORMATS).default("auto").describe("auto: video, or photos when the post has no video; video: H.264/AAC MP4; audio: MP3; image: photo posts/carousels via gallery-dl"),
+      quality: z.union([z.enum(media.QUALITIES), z.number().int().min(144).max(4320)]).default("best").describe("Maximum video height: best, 1080, 720, 480, or an exact pixel height; combined with max_height the lower wins"),
+      dir: z.string().trim().max(1000).optional().describe("Absolute folder to save into (default: the configured downloads folder)"),
+      dest_dir: z.string().trim().max(1000).optional().describe("Alias of dir (the other family apps send both)"),
+      sections: SECTIONS,
+      max_duration_s: z.number().positive().max(7 * 24 * 3600).optional().describe("Refuse a video longer than this many seconds, before downloading"),
+      max_height: z.number().int().min(144).max(4320).optional().describe("Cap the resolution (on top of quality: the lower wins)"),
+      save_link: z.boolean().default(true).describe("Also save the URL in the library with tag descarga and the caption"),
+      playlist: z.boolean().default(false).describe("Download a whole playlist (up to max_items) instead of the single video"),
+      max_items: z.number().int().min(1).max(500).default(media.DEFAULT_MAX_ITEMS).describe("Max playlist items when playlist is true"),
+      cookies_browser: z.string().trim().max(60).optional().describe("Browser whose login cookies to use (firefox, chrome, edge, brave…); default tries without, then each browser"),
+      wait: z.boolean().default(true).describe("Wait for the download to finish (default true)"),
+      timeout_s: z.number().int().min(5).max(3600).default(150).describe("Seconds to wait (default 150, under the assistant's 180 s call limit); past it the download keeps running and media_status follows it"),
+    }), { openWorldHint: true },
+    async (a) => {
+      const started = media.startDownload({
+        url: a.url, format: a.format, quality: String(a.quality), dir: a.dir, dest_dir: a.dest_dir, save_link: a.save_link,
+        playlist: a.playlist, max_items: a.max_items, cookies_browser: a.cookies_browser || "auto",
+        sections: a.sections, max_duration_s: a.max_duration_s, max_height: a.max_height,
+      });
+      if (!a.wait) return agentView(started, { started: true, existing: started.existing });
+      const done = await media.waitForDownload(started.id, a.timeout_s * 1000);
+      return agentView(done, { existing: started.existing });
+    }),
+
+  tool("media_status",
+    "Progress and result of media downloads — estado de las descargas, cómo va la descarga\nWith id: that download's status, progress, speed, eta and, when done, its files (absolute paths); wait_s (up to 150) blocks until it finishes or the time runs out. Without id: the most recent downloads (status filter: queued, downloading, processing, done, failed, cancelled, active or finished).\nSinónimos: cómo va la descarga, estado de la descarga, qué he descargado, descargas en curso, dónde se guardó, lista de descargas, ruta del archivo descargado",
+    z.object({
+      id: z.string().optional(),
+      status: z.string().max(20).optional(),
+      limit: z.number().int().min(1).max(100).default(10),
+      wait_s: z.number().int().min(0).max(150).default(0).describe("With id: wait up to this many seconds for the download to finish"),
+    }), RO,
+    async (a) => {
+      if (a.id) {
+        if (a.wait_s > 0 && media.getDownload(a.id)) await media.waitForDownload(a.id, a.wait_s * 1000);
+        const row = media.getDownload(a.id);
+        if (!row) fail(`No existe una descarga con id "${a.id}".`);
+        return agentView(row, { detail: true });
+      }
+      const out = media.listDownloads({ status: a.status, limit: a.limit });
+      return { total: out.total, items: out.items.map((r) => agentView(r)) };
+    }),
+
+  tool("media_cancel",
+    "Cancel a queued or running media download — cancelar descarga, parar la descarga\nA waiting download is removed from the queue; the running one is stopped and its whole process tree killed. Partial files are cleaned up.\nSinónimos: cancela la descarga, para la descarga, detén la descarga, no la descargues, abortar descarga",
+    z.object({ id: z.string() }), { idempotentHint: true },
+    (a) => agentView(media.cancelDownload(a.id))),
+
+  tool("media_retry",
+    "Retry a failed or cancelled media download — reintentar descarga, volver a descargar\nPuts the same download back in the queue (same url, format, quality and folder) and, with wait (default true), waits for the result like media_download.\nSinónimos: reintenta la descarga, vuelve a descargarlo, inténtalo otra vez, descargar de nuevo",
+    z.object({ id: z.string(), wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(3600).default(150) }), { openWorldHint: true },
+    async (a) => {
+      const row = media.retryDownload(a.id);
+      if (!a.wait) return agentView(row);
+      return agentView(await media.waitForDownload(row.id, a.timeout_s * 1000));
+    }),
+
+  tool("media_probe",
+    "Inspect a link before downloading (title, duration, qualities) — comprobar enlace, ver formatos\nAsks yt-dlp (or gallery-dl for photo posts) what is behind a URL without downloading: title, uploader, duration, available video heights, whether it is a playlist or a photo post. Needs the network.\nSinónimos: qué hay en este enlace, es un vídeo o fotos, qué calidades tiene, cuánto dura, ver información del vídeo, comprobar si se puede descargar",
+    z.object({
+      url: z.string().trim().min(1),
+      playlist: z.boolean().default(false),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.probeUrl({ url: a.url, playlist: a.playlist, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_info",
+    "What is behind a link, for other apps and for the assistant — información del enlace, metadatos del vídeo\nSame as media_probe plus the fields the family clients need: id, extractor, thumbnail (URL), subtitle_langs (manual and automatic captions, deduplicated), is_live, description (up to 2000 characters), heights, is_playlist and, for a photo post, photo_post: true. Does not download anything. Needs the network.\nSinónimos: información del vídeo, qué subtítulos tiene, miniatura del vídeo, metadatos del enlace, idiomas de los subtítulos, es un directo",
+    z.object({
+      url: z.string().trim().min(1),
+      playlist: z.boolean().default(false),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.probeUrl({ url: a.url, playlist: a.playlist, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_subtitles",
+    "Get the captions of a video as text with timing — subtítulos, transcripción de un vídeo\nReads the subtitles of a video without downloading it: langs (default es, en) in order of preference, the first language that has captions wins, manual captions before automatic ones. Returns text (continuous speech, rolling auto-caption repeats removed), lang, source (manual or auto) and cues [{start_s, end_s, text}]. Fails with a clear message when there are none, listing the languages that exist.\nSinónimos: dame los subtítulos, transcripción del vídeo de YouTube, qué dice el vídeo, resumen del vídeo sin descargarlo, texto del vídeo, subtítulos automáticos",
+    z.object({
+      url: z.string().trim().min(1),
+      langs: z.array(z.string().trim().min(1).max(20)).min(1).max(10).default(["es", "en"]).describe("Languages in order of preference"),
+      cookies_browser: z.string().trim().max(60).optional(),
+    }), { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+    (a) => media.getSubtitles({ url: a.url, langs: a.langs, cookies_browser: a.cookies_browser || "auto" })),
+
+  tool("media_audio_for_asr",
+    "Download the audio of a link as mono 16 kHz WAV for speech to text — audio para transcribir\nLike media_download with format audio, but the file is a mono 16 kHz PCM WAV (what the speech-to-text engines read), kept in the downloads folder's asr subfolder and never saved as a library link. sections cuts parts, max_duration_s refuses a longer video. Waits up to timeout_s (default 150) and returns the download view; files[0].path is the WAV. If it is still running, follow it with media_status.\nSinónimos: audio para transcribir, sacar el audio en wav, audio para whisper, preparar el audio para el reconocimiento de voz",
+    z.object({
+      url: z.string().trim().min(1),
+      sections: SECTIONS,
+      max_duration_s: z.number().positive().max(7 * 24 * 3600).optional(),
+      cookies_browser: z.string().trim().max(60).optional(),
+      wait: z.boolean().default(true),
+      timeout_s: z.number().int().min(5).max(3600).default(150),
+    }), { openWorldHint: true },
+    async (a) => {
+      const started = media.startDownload({
+        url: a.url, format: "audio", asr: true, save_link: false, sections: a.sections, max_duration_s: a.max_duration_s, cookies_browser: a.cookies_browser || "auto",
+      });
+      if (!a.wait) return agentView(started, { started: true, existing: started.existing });
+      return agentView(await media.waitForDownload(started.id, a.timeout_s * 1000), { existing: started.existing });
+    }),
+
+  tool("media_tools",
+    "Show or update yt-dlp, gallery-dl and ffmpeg — herramientas de descarga, actualizar yt-dlp\nReports which of yt-dlp, gallery-dl and ffmpeg were found (path, version and how: env, PATH, sibling app folder, python module), the downloads folder and the install command when something is missing. update: true runs the updaters (yt-dlp -U or pip install -U) and returns the versions before and after.\nSinónimos: tengo yt-dlp, está instalado ffmpeg, actualizar yt-dlp, por qué no descarga, instalar el descargador, versión de yt-dlp, herramientas de descarga",
+    z.object({ update: z.boolean().default(false), tools: z.array(z.enum(["ytdlp", "gallerydl"])).optional() }), { openWorldHint: true },
+    async (a) => {
+      const update = a.update ? await media.updateTools(a.tools?.length ? { tools: a.tools } : {}) : undefined;
+      const status = await media.toolsStatus({ refresh: !!a.update });
+      return { ...status, settings: media.getMediaSettings(), ...(update ? { update: update.results } : {}) };
+    }),
+
+  tool("site_sessions",
+    "Which sites Links is signed in to for downloads — sesiones guardadas, iniciar sesión en YouTube/X/Instagram\nLists the browsers it can use (the system default first; choice auto follows the default) and the sites with a login button (YouTube, X, Instagram, Threads, TikTok, Facebook, Reddit, Twitch, Vimeo, Pinterest, SoundCloud, Bilibili, Patreon): whether Links holds a signed-in session for each, since when, the browser it uses and the login window if one is open (state: opening, waiting, signing, saved, capturing, closed, expired, failed). No cookie values are returned.\nSinónimos: con qué cuentas está conectado Links, sesiones de descarga, estoy logueado en YouTube, cookies de descargas",
+    z.object({}), RO,
+    () => sessions.list()),
+
+  tool("site_login",
+    "Open a sign-in window so downloads can use the account — iniciar sesión con YouTube, X, Instagram…\nOpens a window of the user's default browser when it is a Chromium one (Brave, Chrome, Edge, Vivaldi…; else the first installed) on the computer where Links runs, on that site's login page, with a browser profile of Links' own. The user signs in there themselves; Links saves the session on its own and closes the window (or call with finish: true once they say they are done). Use it after a download failed with login, then media_retry. Never ask the user for their password and never type it.\nSinónimos: inicia sesión en youtube para descargar, conéctate a mi cuenta de instagram, loguéate en X, usar mi cuenta para descargar",
+    z.object({
+      site: z.string().trim().min(1).max(40).describe("Site id: youtube, x, instagram, threads, tiktok, facebook, reddit, twitch, vimeo, pinterest, soundcloud, bilibili, patreon"),
+      finish: z.boolean().default(false).describe("The user says they finished: read the session now and close the window"),
+      cancel: z.boolean().default(false).describe("Close the window without waiting"),
+      browser: z.string().trim().max(40).optional().describe("Browser to use from now on (a name from site_sessions browsers, or auto = the system default); omit to keep the current one"),
+    }), { openWorldHint: true },
+    async (a) => {
+      if (a.browser) sessions.setBrowserChoice(a.browser);
+      if (a.cancel) { await sessions.cancelLogin(); return sessions.list(); }
+      if (a.finish) { await sessions.finishLogin(); return sessions.list(); }
+      await sessions.startLogin(a.site);
+      return { ...sessions.list(), message: "Ventana abierta en el ordenador donde corre Links: el usuario inicia sesión allí y Links la guarda solo. Consulta site_sessions para ver cuándo queda guardada." };
+    }),
+
+  tool("site_logout",
+    "Forget Links' session on a site — cerrar sesión de YouTube/X/Instagram en Links\nDeletes that site's cookies from Links' browser profile and from the cookies file downloads use. The user's own browser is not touched.\nSinónimos: cierra la sesión de youtube en links, olvida mi cuenta de instagram, quita la sesión",
+    z.object({ site: z.string().trim().min(1).max(40) }), { destructiveHint: true, idempotentHint: true },
+    (a) => sessions.logout(a.site)),
+
+  tool("media_delete",
+    "Remove a download record, optionally its files — borrar descarga, quitar archivo descargado\nRemoves the record from the downloads list. With delete_files: true AND confirm: true it also deletes the downloaded files from the disk (permanent, there is no recycle bin): confirm with the user first. A running download must be cancelled first.\nSinónimos: borra la descarga, elimina el archivo descargado, quita de la lista de descargas, borrar el vídeo descargado",
+    z.object({ id: z.string(), delete_files: z.boolean().default(false), confirm: z.boolean().default(false) }), { destructiveHint: true },
+    (a) => {
+      if (a.delete_files && !a.confirm) fail("Borrar los archivos es permanente: confirma con el usuario y vuelve a llamar con confirm: true.");
+      return media.removeDownload(a.id, { deleteFiles: a.delete_files });
+    }),
+
+  tool("link_video",
+    "Transcript (with timestamps) and key frames of a saved video link — transcripción del vídeo, fotogramas clave\nReturns what the background analysis obtained for a saved video: status (none, queued, running, done, partial, failed, no_source), the transcript (status, via, language, text, timed segments) and the key frames (index, t_s, time, reason and the absolute path of the JPEG). Identify the link by id or url. If the status is none or no_source, offer link_video_analyze. Quote only what is returned.\nSinónimos: qué dice el vídeo, transcripción del reel, resumen del vídeo, fotogramas, capturas del vídeo, subtítulos locales",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      segments: z.boolean().default(true).describe("Include the timed segments"),
+      max_chars: z.number().int().min(500).max(200000).default(20000).describe("Cut the transcript text at this many characters"),
+    }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const view = video.videoView(link.id, { segments: a.segments, maxChars: a.max_chars });
+      return { title: link.title, url: link.url, ...view };
+    }),
+
+  tool("link_video_analyze",
+    "Transcribe a saved video link and extract its key frames — analizar vídeo, transcribir reel\nQueues (or repeats) the analysis of a saved link: a transcript through the family speech-to-text service (or faster-whisper on the CPU when installed) and key frames by scene change. The media is a file given in path, a finished download of the link, or - with download: true - the video downloaded with the application downloader. Idempotent: a finished analysis of the same file is returned unchanged unless force is true. wait (default true) follows it up to timeout_s; if it is still running, call link_video later.\nSinónimos: transcribe este reel, analiza el vídeo, saca los fotogramas, transcribir vídeo guardado, subtítulos del vídeo, procesar vídeo",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      path: z.string().trim().min(1).optional().describe("Absolute path of a video or audio file to use as the source"),
+      download: z.boolean().default(false).describe("Allow downloading the video of this link when no file is at hand"),
+      force: z.boolean().default(false), language: z.string().trim().max(10).optional(),
+      wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(1800).default(120),
+    }), { idempotentHint: true, openWorldHint: true },
+    async (a) => {
+      const link = resolveLinkOrFail(a);
+      const started = video.requestAnalysis(link.id, { path: a.path, download: a.download, force: a.force, language: a.language });
+      if (a.wait && ["queued", "running"].includes(started.status)) await video.waitVideoIdle(a.timeout_s * 1000);
+      return { title: link.title, ...video.videoView(link.id, { segments: false, maxChars: 4000 }) };
+    }),
+
+  tool("link_video_search",
+    "Search the spoken words of all analysed videos — buscar en transcripciones\nFull-text search over the transcripts of saved videos. Returns the matching lines with the link, the title and the time (seconds and m:ss) where they are said.\nSinónimos: qué vídeo dice, dónde dijo, buscar en los reels, buscar en las transcripciones, frase en un vídeo",
+    z.object({ query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).default(20) }), RO,
+    (a) => ({ query: a.query, hits: video.searchTranscripts(a.query, a.limit) })),
+
+  tool("video_digest",
+    "Watch a video for you and return a cheap text digest — digiere este vídeo, resume el vídeo del tweet\nDownloads a video link (X/Twitter, YouTube, reels, any yt-dlp site; or path = a local file for a saved link), transcribes it, splits the picture into segments, reads screen text by OCR and summarizes chapters with local models, all on the user's PC. Returns status and the text of level (default brief = card + chapter index) with token counts and the paths of the files (digest.md, frames, contact sheet). focus: what you are looking for, so the summary answers it. Idempotent; queued/running: call again later. force redoes it.\nSinónimos: mira este vídeo, de qué va el vídeo, resúmeme el vídeo, transcribe el tweet, vídeo largo, ver vídeo sin tokens",
+    z.object({
+      url: z.string().trim().min(1).optional(), id: z.string().optional(),
+      path: z.string().trim().min(1).optional().describe("Absolute path of a local video/audio file to use as the source"),
+      focus: z.string().trim().max(500).optional().describe("What you want from the video; the summary answers it and marks the chapters that matter"),
+      level: z.enum(["brief", "card", "index", "visual", "transcript", "full", "none"]).default("brief"),
+      force: z.boolean().default(false), redo_media: z.boolean().default(false).describe("With force: also download and transcribe again"),
+      language: z.string().trim().max(10).optional().describe("Spoken language hint for speech to text (es, en…)"),
+      wait: z.boolean().default(true), timeout_s: z.number().int().min(5).max(1800).default(600),
+      max_chars: z.number().int().min(1000).max(400000).default(60000),
+    }), { idempotentHint: true, openWorldHint: true },
+    async (a) => {
+      if (!a.url && !a.id) fail("Indica url o id.");
+      const started = digest.requestDigest({ url: a.url, id: a.id, path: a.path, focus: a.focus, force: a.force, redo_media: a.redo_media, language: a.language });
+      if (a.wait && ["queued", "running"].includes(started.status)) await digest.waitDigest(started.link_id, a.timeout_s * 1000);
+      return digest.digestView(started.link_id, { level: a.level === "none" ? null : a.level, maxChars: a.max_chars });
+    }),
+
+  tool("video_digest_read",
+    "Read one layer or one time span of a video digest — leer el digest, tramo del vídeo\nReturns the text of a finished digest: brief (card + chapter index), card, index, visual (every segment with literal screen text), transcript (literal, timed) or full. from/to (seconds or m:ss) cut the visual and transcript layers to that span, so a long video is read piece by piece.\nSinónimos: lee la transcripción, qué dice entre el minuto 3 y el 5, qué sale en pantalla, capa visual del vídeo",
+    z.object({
+      id: z.string().optional(), url: z.string().optional(),
+      level: z.enum(["brief", "card", "index", "visual", "transcript", "full"]).default("brief"),
+      from: z.union([z.string(), z.number()]).optional(), to: z.union([z.string(), z.number()]).optional(),
+      max_chars: z.number().int().min(1000).max(400000).default(60000),
+    }), RO,
+    (a) => {
+      const link = resolveLinkOrFail(a);
+      const view = digest.digestView(link.id, { level: a.level, from: a.from ?? null, to: a.to ?? null, maxChars: a.max_chars });
+      if (view.status === "none") fail("Este enlace no tiene digest: llama antes a video_digest.");
+      return view;
+    }),
+
+  tool("video_ask",
+    "Ask a question about a digested video, answered with checked quotes — pregunta al vídeo\nThe local model answers from the transcript and the screen text (OCR) of one video; every sentence carries citations (s = speech, v = screen) with the time and a verbatim quote that the app checked against the source. Sentences whose quotes do not match are dropped. Needs a digest (video_digest) first.\nSinónimos: qué dice el vídeo sobre, en qué minuto habla de, pregúntale al vídeo, dónde explica",
+    z.object({ id: z.string().optional(), url: z.string().optional(), question: z.string().trim().min(1).max(2000) }), RO,
+    async (a) => { const link = resolveLinkOrFail(a); return { title: link.title, ...(await digest.askVideo(link.id, a.question)) }; }),
+
+  tool("video_find",
+    "Search what is said and shown in digested videos — buscar en vídeos, texto en pantalla\nFull-text search over transcripts and screen text (OCR) of one video (id/url) or all of them. Each hit has the time, the line with the lines before and after, or the screen text and its frame path.\nSinónimos: en qué vídeo sale, busca en el vídeo, dónde aparece en pantalla, minuto en que dice",
+    z.object({ query: z.string().trim().min(1).max(200), id: z.string().optional(), url: z.string().optional(), limit: z.number().int().min(1).max(100).default(20) }), RO,
+    (a) => {
+      const link = a.id || a.url ? resolveLinkOrFail(a) : null;
+      return { query: a.query, hits: digest.findInVideos(a.query, { id: link?.id || null, limit: a.limit }) };
+    }),
+
+  tool("video_frame",
+    "The exact frame of a video at an instant — fotograma en el minuto, captura del vídeo\nExtracts the frame at t (seconds or m:ss) of a video whose digest exists and returns its absolute JPEG path, size and the tokens it would cost to look at. Use it only when the digest says the picture matters (a chart, a diagram, a UI).\nSinónimos: captura en el minuto, saca el fotograma, enséñame la imagen del segundo, frame del vídeo",
+    z.object({ id: z.string().optional(), url: z.string().optional(), t: z.union([z.string(), z.number()]), width: z.number().int().min(160).max(1920).default(1024) }),
+    { idempotentHint: true },
+    async (a) => { const link = resolveLinkOrFail(a); return digest.frameAt(link.id, a.t, { width: a.width }); }),
+
+  tool("video_digests",
+    "List the video digests and their state — digests de vídeo, vídeos digeridos\nThe latest digests: title, url, status, stage while running, focus, duration and the tokens of their brief level.\nSinónimos: qué vídeos he digerido, estado del digest, lista de vídeos resumidos",
+    z.object({ limit: z.number().int().min(1).max(200).default(30) }), RO,
+    (a) => ({ digests: digest.listDigests({ limit: a.limit }) })),
+];
+
+/** How long the MCP bridge waits for the app to answer one tool call (a download that waits for its file takes longer than a lookup). */
+export function callTimeoutMs(name, args = {}) {
+  if (name === "ask_link") return 105000;
+  if ((name === "media_download" || name === "media_retry" || name === "media_audio_for_asr") && args.wait !== false) return ((Number(args.timeout_s) || 150) + 30) * 1000;
+  if (name === "link_video_analyze" && args.wait !== false) return ((Number(args.timeout_s) || 120) + 30) * 1000;
+  if (name === "video_digest" && args.wait !== false) return ((Number(args.timeout_s) || 600) + 30) * 1000;
+  if (name === "video_ask") return 960_000;
+  if (name === "video_frame") return 120_000;
+  if (name === "media_status" && args.wait_s) return (Number(args.wait_s) + 30) * 1000;
+  if (name === "media_tools" && args.update) return 6 * 60_000;
+  if (name === "media_probe" || name === "media_info") return 120_000;
+  if (name === "media_subtitles") return 180_000;
+  return 90_000;
+}
+
+export function findTool(name) {
+  return TOOLS.find((t) => t.name === name);
+}
+
+export async function callTool(name, args) {
+  const t = findTool(name);
+  if (!t) throw Object.assign(new Error("Herramienta desconocida."), { status: 404 });
+  return await t.run(t.schema.parse(args || {}));
+}

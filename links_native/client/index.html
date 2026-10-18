@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es" data-hoard-app="links">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#14181d" />
+    <link rel="manifest" href="/links/manifest.webmanifest" />
+    <link rel="icon" href="/links/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/links/icon-192.png" />
+    <title>Links Hoard · Bandeja de lectura</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => navigator.serviceWorker.register("/links/sw.js").catch(() => {}));
+      }
+    </script>
+  </body>
+</html>

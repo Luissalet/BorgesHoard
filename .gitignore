@@ -12,3 +12,6 @@ __pycache__/
 .env.*
 !.env.example
 *.log
+native/pdf/target/
+native/bin/
+links_native/data/

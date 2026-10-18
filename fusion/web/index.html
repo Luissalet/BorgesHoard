@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es" data-hoard-app="borges">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borges’s Hoard</title>
+  <link rel="icon" href="/fusion-static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/fusion-static/icon-192.png">
+  <link rel="stylesheet" href="/fusion-static/hoard-theme.css">
+  <link rel="stylesheet" href="/fusion-static/product-theme.css">
+  <link rel="stylesheet" href="/fusion-static/style.css">
+  <link rel="stylesheet" href="/fusion-static/family.css">
+  <script type="module" src="/fusion-static/app.js"></script>
+  <script type="module" src="/api/copilot/launcher.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="wordmark hoard-brand" href="/" aria-label="Inicio"><img src="/fusion-static/icon-192.png" alt="" width="42" height="42"><span id="brand">Borges’s Hoard</span></a>
+    <nav aria-label="Secciones"><a class="nav-link current" href="#" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg>Funciones</a><div id="module-nav"></div></nav>
+    <a class="hub-link" href="http://127.0.0.1:8810"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 3l9 7v11H3ZM9 21v-8h6v8"/></svg>Hoard Hub</a>
+  </aside>
+  <main>
+    <div class="title-row"><div><h1>Funciones</h1><p>Activa solo lo que quieras usar.</p></div><button id="stop-all" type="button" class="secondary">Desactivar todas</button></div>
+    <div class="summary" role="status" aria-live="polite"><span class="indicator" aria-hidden="true"></span><span id="summary">Conectando…</span></div>
+    <p id="error" role="alert" hidden></p>
+    <section class="shared-search" aria-label="Buscar en los módulos activos">
+      <form id="search-form"><label for="query">Buscar en biblioteca, lecturas y trámites</label><div class="search-input"><input id="query" name="q" type="search" minlength="3" maxlength="200" required placeholder="Una frase, un asunto o una referencia"><button class="secondary" type="submit">Buscar</button></div></form>
+      <p>Consulta sólo las funciones que tengas activadas y conserva sus citas.</p>
+      <div id="search-results" aria-live="polite"></div>
+    </section>
+    <section id="modules" aria-label="Funciones independientes" aria-busy="true"></section>
+    <footer><h2>Tus datos</h2><p>Desactivar una función detiene su motor. Sus datos y ajustes se conservan. Todas las funciones están desactivadas en la primera apertura.</p><p>Las funciones que actives recordarán tu elección. Abrir el catálogo de herramientas no activa ninguna.</p></footer>
+  </main>
+</body>
+</html>

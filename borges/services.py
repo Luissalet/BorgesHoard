@@ -55,7 +55,7 @@ class Services:
         stale = self.documents.count_stale()
         if stale:
             log.info("%d documents need updated indexing; startup will reindex them", stale)
-        if self.config.autostart or stale:
+        if self.config.autostart or (stale and not self.config.defer_stale):
             self._preload = threading.Thread(target=self._warm_up, name="borges-model", daemon=True)
             self._preload.start()
             self.worker.enqueue_all()
@@ -84,6 +84,8 @@ class Services:
         self.faustus_scheduler.stop()
         self.watcher.stop()
         self.worker.stop()
+        if self._preload is not None and self._preload.is_alive():
+            self._preload.join()
         self.db.close()
 
     # ---------- collections ----------

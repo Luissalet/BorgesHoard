@@ -1,0 +1,5 @@
+{
+  "source": "https://github.com/Luissalet/HermesHoard",
+  "commit": "f72b5e6ffedc46db7a35ea6fcce440597e5b807c",
+  "role": "reviewed native lifecycle, streaming dispatch and Hoard controls, adapted for Borges"
+}

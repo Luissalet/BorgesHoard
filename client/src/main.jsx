@@ -20,7 +20,7 @@ if (
 ) {
   try {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+      navigator.serviceWorker.register("/library/sw.js").catch(() => {});
     });
   } catch {
     // PWA install is optional; never block the app on it.

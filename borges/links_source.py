@@ -40,6 +40,7 @@ MAX_LINK_CHARS = 400_000
 STATES = ("all", "unread", "read", "archived")
 
 Caller = Callable[[str, dict], dict]  # (tool, arguments) -> the tool's result
+native_caller: Caller | None = None  # supplied by the merged product, never starts Links
 
 
 class LinksError(RuntimeError):
@@ -79,6 +80,8 @@ class LinksClient:
     def call(self, tool: str, arguments: dict) -> dict:
         if self._caller is not None:
             return self._caller(tool, arguments)
+        if native_caller is not None and not self.base_url:
+            return native_caller(tool, arguments)
         if self.base_url:
             return self._direct(tool, arguments)
         answer = family.call("links", tool, arguments, timeout=self.timeout)

@@ -1,5 +1,18 @@
 # Borges's Hoard
 
+## Biblioteca, lecturas y trámites
+
+Borges incorpora **Links y Kafka** con sus interfaces y todas sus funciones: biblioteca con citas, artículos y subrayados, medios, archivo documental, OCR, taller PDF, facturas, contratos, plazos y recordatorios. Tres módulos independientes, todos desactivados inicialmente. Los automatismos tienen controles separados y también empiezan apagados. MCP descubre 378 herramientas sin arrancar servidores ni motores.
+
+Las interfaces nativas viven en `/library/`, `/links/` y `/paperwork/`. El servidor de Borges aloja los motores Python y un auxiliar Node por stdio, sin otro puerto. La búsqueda común consulta sólo módulos activos y conserva las citas originales. No hay que ejecutar las aplicaciones antiguas.
+
+Instalación: `python -m pip install -r requirements.txt` y `npm ci --prefix links_native`. El taller PDF se construye con `python scripts/build_pdf_engine.py` (Rust 1.95.0). Arranque explícito: `python -m borges --no-browser` o desde Hoard Hub. Las interfaces construidas se incluyen en el repositorio.
+
+Antes de usar datos anteriores, con todo apagado: `python scripts/adopt_fusion_data.py --parent "C:\ruta\Hoards"`. Sólo guarda el mapa central; los datos permanecen en sus carpetas originales y deben conservarse. [Funcionamiento, instalación y límites](docs/FUSION.md) · [Inventario completo](provenance/CAPABILITIES.md) · [Procedencia y licencias](provenance/sources.json).
+
+La documentación de biblioteca que sigue conserva sus funciones específicas; las rutas API de esa interfaz llevan ahora el prefijo `/library` y el arranque ya no precarga modelos ni índices.
+
+
 Tu biblioteca personal, indexada en tu propio ordenador. Señala carpetas con documentos (PDF, DOCX, PPTX, Markdown, TXT, EPUB, HTML, CSV) y pregunta «¿dónde leí o escribí sobre X?»: cada respuesta llega con su cita exacta — `«Título», p. 12` o `apuntes.md § Sección` — y el pasaje completo para leerlo. Un asistente accede al mismo índice por MCP, así que puede citar tus documentos en vez de inventárselos.
 
 Todo se queda en tu máquina: SQLite para texto y vectores, un pequeño modelo multilingüe de embeddings que corre en la CPU, sin cuentas y sin red salvo la descarga única del modelo.

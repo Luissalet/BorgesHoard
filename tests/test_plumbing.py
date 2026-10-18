@@ -58,6 +58,8 @@ def test_a_second_start_reports_the_running_app_and_leaves_the_token_alone(tmp_p
         assert second.returncode == 0 and "already running" in second.stdout
         assert token_file.read_text() == before
         auth = {"Authorization": f"Bearer {before.strip()}"}
+        assert httpx.post(f"http://127.0.0.1:{port}/api/agent/call", json={"name": "library_status"}, headers=auth).status_code == 409
+        assert httpx.put(f"http://127.0.0.1:{port}/api/modules/library", json={"enabled": True}).status_code == 200
         assert httpx.post(f"http://127.0.0.1:{port}/api/agent/call", json={"name": "library_status"}, headers=auth).status_code == 200
     finally:
         first.terminate()

@@ -7,7 +7,7 @@ from .hoard_link.service import run_main
 
 
 def main() -> int:
-    return run_main(service="borges-hoard", package="borges", default_port=5184, app_factory="borges.main:create_app",
+    return run_main(service="borges-hoard", package="borges", default_port=5184, app_factory="fusion.app:create_app",
                     data_dir_env="BORGES_DATA_DIR", port_env="BORGES_PORT", title="Borges's Hoard", open_browser_default=False)
 
 

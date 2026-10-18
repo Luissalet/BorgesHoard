@@ -1,49 +1,38 @@
-"""The MCP bridge (the shared `hoard_link.bridge.CatalogBridge`) starts the app when nothing answers, so a workspace that
-starts first still gets the tools."""
+"""Discovery remains inert even when a retired autostart variable is present."""
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def load(monkeypatch, autostart: str):
-    monkeypatch.setenv("BORGES_URL", "http://127.0.0.1:1")
-    monkeypatch.setenv("BORGES_BRIDGE_AUTOSTART", autostart)
-    spec = importlib.util.spec_from_file_location("borges_bridge_under_test", ROOT / "mcp_server.py")
+def load(monkeypatch, autostart):
+    monkeypatch.setenv('BORGES_URL', 'http://127.0.0.1:1')
+    monkeypatch.setenv('BORGES_BRIDGE_AUTOSTART', autostart)
+    spec = importlib.util.spec_from_file_location('borges_bridge_under_test', ROOT / 'mcp_server.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.build()
+    return module
 
 
-def test_nothing_answers_and_autostart_is_off(monkeypatch):
-    bridge = load(monkeypatch, "0")
-    assert bridge.healthy() is False
-    assert bridge.start_app(wait_s=1) is False
+def test_discovery_is_static_with_autostart_off(monkeypatch, tmp_path):
+    monkeypatch.setenv('BORGES_DATA_DIR', str(tmp_path / 'not-created'))
+    module = load(monkeypatch, '0')
+    assert len(module.catalog()) == 378
+    assert not (tmp_path / 'not-created').exists()
 
 
-def test_the_bridge_is_configured_for_this_app(monkeypatch):
-    bridge = load(monkeypatch, "1")
-    assert (bridge.service, bridge.package, bridge.default_port) == ("borges-hoard", "borges", 5184)
-    assert bridge.base_url == "http://127.0.0.1:1" and bridge.prefix == "BORGES"
+def test_retired_autostart_flag_never_spawns_an_app(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError('catalog discovery must not spawn')
+    monkeypatch.setattr(subprocess, 'Popen', forbidden)
+    module = load(monkeypatch, '1')
+    assert 'library_search' in {t['name'] for t in module.catalog()}
+    assert not hasattr(module, 'build')
 
 
-def test_nothing_answers_so_the_bridge_starts_the_app(monkeypatch, tmp_path):
-    from borges.hoard_link import bridge as lib
-
-    bridge = load(monkeypatch, "1")
-    monkeypatch.setenv("BORGES_DATA_DIR", str(tmp_path))
-    started = []
-
-    answers = iter([False, False, True])
-    monkeypatch.setattr(lib, "_healthy", lambda port, service, host="127.0.0.1": next(answers, True))
-    # The bridge starts the app as an orphan (so it outlives the MCP host): record the spawn instead of making one.
-    monkeypatch.setattr(lib.launch, "spawn_orphan", lambda argv, cwd, env, log_path: started.append((argv, env)) or 4242)
-    monkeypatch.setattr(lib.launch, "process_created", lambda pid: 1.0)
-    monkeypatch.setattr(lib.launch, "process_alive", lambda pid, created: True)
-    lib._children.clear()
-    assert bridge.start_app(wait_s=5) is True
-    argv, env = started[0]
-    assert argv == [sys.executable, "-m", "borges"]
-    assert env["BORGES_PORT"] == "1" and env["PORT_STRICT"] == "1" and env["HOARD_NO_BROWSER"] == "1"
-    assert (tmp_path / "logs").is_dir()
+def test_fresh_discovery_imports_no_native_engine(monkeypatch):
+    script = "import sys,mcp_server; assert len(mcp_server.catalog())==378; assert not any(k in sys.modules for k in ['borges.main','kafka_hoard.main','fusion.links_engine','fastembed'])"
+    result = subprocess.run([sys.executable, '-c', script], cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

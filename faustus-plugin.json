@@ -2,10 +2,110 @@
   "schema": 1,
   "id": "borges",
   "name": "Borges's Hoard",
-  "purpose": "The user's personal library: folders of their own documents, and their own Faustus conversations and the links they saved in Links Hoard, indexed locally so the assistant can answer 'where did I read/write/decide X' with exact page, section and chat-turn citations.",
-  "capabilities": ["library", "documents", "hybrid-search", "citations", "passages", "pdf", "docx", "markdown", "epub", "html", "collections", "folder-watch", "reindex", "similar-passages", "local-embeddings", "faustus-conversations", "saved-links", "sources", "date-range-search", "pptx", "slide-citations"],
-  "x-family": { "copilot": true },
-  "placeholders": ["BORGES_DIR", "APP_URL", "TOKEN_FILE", "PYTHON"],
+  "purpose": "Personal library, saved articles and paperwork: cited document search, read-later, media, original files, OCR, PDF workshop, deadlines and reminders. Independent native modules and automation switches, all OFF initially; explicit launch only.",
+  "capabilities": [
+    "library",
+    "documents",
+    "hybrid-search",
+    "citations",
+    "passages",
+    "pdf",
+    "docx",
+    "markdown",
+    "epub",
+    "html",
+    "collections",
+    "folder-watch",
+    "reindex",
+    "similar-passages",
+    "local-embeddings",
+    "faustus-conversations",
+    "saved-links",
+    "sources",
+    "date-range-search",
+    "pptx",
+    "slide-citations",
+    "paperwork",
+    "document-text-comparison",
+    "deadlines",
+    "invoices",
+    "contracts",
+    "insurance",
+    "warranties",
+    "fines",
+    "renewals",
+    "working-days",
+    "ocr",
+    "pdf-tools",
+    "owned-pdf-engine",
+    "pdf-paragraph-editing",
+    "pdf-artifact-revisions",
+    "pdf-merge",
+    "pdf-compress",
+    "image-compress",
+    "mail-import",
+    "reminders",
+    "notifications",
+    "windows-toast",
+    "ntfy",
+    "telegram",
+    "email",
+    "price-changes",
+    "search",
+    "dashboard",
+    "family-agenda",
+    "hub-notifications",
+    "hub-mail",
+    "tax-pack",
+    "ledger-link",
+    "minutes-deadlines",
+    "bookmarks",
+    "read-later",
+    "extraction",
+    "tags",
+    "highlights",
+    "digest",
+    "import",
+    "watches",
+    "feeds",
+    "github-releases",
+    "page-changes",
+    "event-bus",
+    "media-download",
+    "video-download",
+    "audio-download",
+    "highlights-to-flashcards",
+    "resurface",
+    "time-budgeted-reading-plan",
+    "daily-digest",
+    "job-events",
+    "independent-module-switches",
+    "default-off",
+    "shared-native-search"
+  ],
+  "x-family": {
+    "copilot": true,
+    "modules": [
+      {
+        "id": "library",
+        "origin": "borges"
+      },
+      {
+        "id": "links",
+        "origin": "links"
+      },
+      {
+        "id": "paperwork",
+        "origin": "kafka"
+      }
+    ]
+  },
+  "placeholders": [
+    "BORGES_DIR",
+    "APP_URL",
+    "TOKEN_FILE",
+    "PYTHON"
+  ],
   "defaults": {
     "APP_URL": "http://127.0.0.1:5184",
     "TOKEN_FILE": "{BORGES_DIR}/data/mcp-token",
@@ -14,22 +114,49 @@
   "app": {
     "url_default": "http://127.0.0.1:5184",
     "ui_url": "{APP_URL}",
-    "health": { "path": "/api/health", "expect": { "service": "borges-hoard" } },
-    "identify": { "service": ["borges-hoard"], "title": ["borges's hoard", "biblioteca personal"] },
+    "health": {
+      "path": "/api/health",
+      "expect": {
+        "service": "borges-hoard"
+      }
+    },
+    "identify": {
+      "service": [
+        "borges-hoard"
+      ],
+      "title": [
+        "borges's hoard",
+        "biblioteca personal"
+      ]
+    },
     "launch_hint": {
       "kind": "process",
       "executable": "{PYTHON}",
-      "argv": ["-m", "borges"],
+      "argv": [
+        "-m",
+        "borges",
+        "--no-browser"
+      ],
       "cwd": "{BORGES_DIR}",
-      "readiness": { "url": "{APP_URL}/api/health", "timeout_s": 30 }
+      "readiness": {
+        "url": "{APP_URL}/api/health",
+        "timeout_s": 30
+      }
     }
   },
   "mcp": {
     "transport": "stdio",
     "command": "{PYTHON}",
-    "args": ["{BORGES_DIR}/mcp_server.py"],
-    "env": { "BORGES_URL": "{APP_URL}", "BORGES_TOKEN_FILE": "{TOKEN_FILE}" },
-    "optional_env": []
+    "args": [
+      "{BORGES_DIR}/mcp_server.py"
+    ],
+    "env": {
+      "BORGES_URL": "{APP_URL}",
+      "BORGES_TOKEN_FILE": "{TOKEN_FILE}"
+    },
+    "optional_env": [
+      "BORGES_DATA_DIR"
+    ]
   },
-  "notes": "Keep the app running (python -m borges) while the assistant uses it: the MCP bridge proxies every call to the local server and never opens the database. The first start downloads a ~240 MB multilingual embedding model into data/models; until it is ready, search is keyword-only."
+  "notes": "Launch explicitly from Hoard Hub, then enable only requested modules. All modules and background automation default OFF. Discovery never starts servers, reads histories or downloads models. Existing data is adopted in place. Includes native Links and Kafka functions."
 }

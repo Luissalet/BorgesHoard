@@ -1,0 +1,134 @@
+# Architecture
+
+```
+ upload (UI, REST) ─┐
+ watched folders ───┼──► engine.ingest ──► files.py (content-addressed store, SHA-256, original never modified)
+ mail attachments ──┤        │
+ pasted text ───────┘        ▼
+ mail/source.py          readers.py  PDF text layer (pypdfium2) · OCR (ocr/, optional rapidocr, winocr, light-ocr or tesseract) · images · .eml · .docx · HTML · text
+ (Faustus's Python,          │ pages
+  stdlib only)               ▼
+                     extract/pipeline.py ── texts · kinds · issuers · refs · amounts · dates · periods · deadlines · rules
+                             │ Extraction (kind, issuer, ref, amount, facts with evidence, deadline drafts)
+                             ▼  (optional: extract/llm.py asks a local model when the rules are unsure; answers are validated)
+ store.py / db.py (SQLite WAL + FTS5: documents, pages, deadlines, series, mails, notifications, runs, settings)
+        ▲                    │
+        │                    ├──► engine.run_reminders ──► notify/ (toast, family bus, ntfy, Telegram, email via Faustus)
+ services.py (wiring,        └──► series + price alerts · recurring roll · Phileas sync · housekeeping
+ dashboard, settings)
+        ▲
+ agent_tools.py: one catalogue (314 tools including historical PDF aliases) ──► api/agent.py (shared agent router, Bearer token, masked) · api/ui.py (local, unmasked) · mcp_server.py (stdio)
+ scheduler.py (shared lane scheduler): lane "ingest" (folder and mail scans) · lane "reminders" (reminder run every 10 min, housekeeping hourly)
+```
+
+## Layout
+
+| Path | Role |
+|---|---|
+| `kafka_hoard/main.py` | App factory: guard middleware, error handlers, routers, single-page client |
+| `kafka_hoard/config.py` | Process settings from the environment (`KAFKA_*`) and `.env`; paths under `data/` |
+| `kafka_hoard/db.py`, `store.py` | Schema and migrations; every query. WAL, FTS5 `pages_fts` (unicode61, accent-insensitive) |
+| `kafka_hoard/files.py` | Content-addressed originals: `files/<sha[:2]>/<sha256>.<ext>`; the same bytes are stored once |
+| `kafka_hoard/readers.py` | Bytes to text per page; page splitting; notes when a page could not be read |
+| `kafka_hoard/ocr/` | Optional OCR behind one `Ocr` class: backends `winocr`, `rapidocr`, `light-ocr`, `tesseract` chosen by `select_ocr`; blocks with confidence; reports unavailable instead of failing |
+| `kafka_hoard/docsvc.py` | The family document services (`doc_extract`, `ocr_image`, `ocr_pdf`, `ocr_status`) and their in-memory job table |
+| `kafka_hoard/extract/` | Pure functions from text to an `Extraction`; see below |
+| `kafka_hoard/bizdays.py` | Spanish working days, holidays, regions, extra holidays |
+| `kafka_hoard/engine.py` | Ingestion, reprocessing, deadlines, reminders, series, price alerts, mail, folders, Phileas, housekeeping |
+| `kafka_hoard/services.py` | Wires everything from a `Config`; settings and secrets; dashboard and detail views |
+| `kafka_hoard/agent_tools.py` | The tool catalogue: name, description, pydantic arguments, annotations, handler |
+| `kafka_hoard/api/` | REST: `agent.py` (tools for assistants), `ui.py` (dashboard, UI calls), `documents.py` (upload, file, page image), `workshop.py` (upload, download, status), `health.py` (the shared probe plus Kafka's counts and `/api/status`) |
+| `kafka_hoard/workshop/` | The document workshop: `service.py` (the operations and where results go), `pdfops.py` (pypdf), `imagetools.py`, `ranges.py` and `names.py` (thin layers over the commons' image ladder, page ranges and safe names), `external.py` (Ghostscript, Word, LibreOffice), `jobs.py` (upload jobs, 7-day purge), `proc.py` (injectable `Env` over the commons' process runner: the whole tree is killed on timeout, no console window on Windows) |
+| `kafka_hoard/privacy.py` | Masking of DNI/NIE, IBAN, cards and phones for assistants, over the commons' checksum-aware scanner (a DNI with a wrong letter is left alone) |
+| `kafka_hoard/paths.py`, `util.py`, `errors.py` | Path safety over the commons (Windows-aware), the few id and date helpers that stay, `KafkaError` as a subclass of the commons' `AppError` |
+| `kafka_hoard/scheduler.py` | Kafka's jobs on the commons' `LaneScheduler`: two lanes, one worker each; jobs deduplicated; pause and run-now; last-run times kept in `data/scheduler.json` so a restart does not rescan at once |
+| `kafka_hoard/notify/` | Channels, minimum severity, night window, dedupe keys, test sends; the hub route (`notify.via`) with the own channels as fallback |
+| `kafka_hoard/mail/` | `source.py` (Kafka's paperwork words over the family's `fam_mail.MailRouter`: the hub's mail gateway first, the Faustus helper as the fallback, picked by `mail.source`), `classify.py` (paperwork, maybe, noise) |
+| `kafka_hoard/agenda.py` | The family agenda: open deadlines as agenda items with kind and priority |
+| `kafka_hoard/taxpack.py` | The tax return folder: classification by kind and text, copies, index, CSV, missing certificates, Ledger's year summary |
+| `kafka_hoard/hoard_link/` | Vendored family library (event bus, calls to other apps, request guard, error handlers, PWA files, page server, launcher, agent kit, MCP bridge, notify channels, mail router, money, dates, text and the rest of the commons). Not edited here |
+| `mcp_server.py` | stdio bridge (the commons' `CatalogBridge`): proxies to the running app, starts it when needed; PDF and image tools wait up to 175 s |
+| `client/` | React 19 + Vite 6 + Tailwind 4 UI; built into `kafka_hoard/static` |
+
+## Ingestion
+
+`engine.ingest` takes bytes and a name. The bytes are stored by SHA-256, so the same file arriving by upload, folder and mail is one document. `readers` produce one text per page; a PDF page without a text layer goes to OCR when available, otherwise a note records it. The extraction runs on the pages and fills the document: kind, issuer, reference, amount, dates with roles, facts with evidence (quote and page), and deadline drafts. A document whose confidence is below 60, whose kind is unknown or that produced no date lands in state `review`; the rest are `ok`.
+
+A document edited by the user keeps its edits (`overrides`): the extraction reads them as the truth, so editing the issue date, the kind or a title changes every dependent deadline when it is read again.
+
+## Extraction (`kafka_hoard/extract/`)
+
+- `texts.py` holds the Spanish and English titles and basis sentences of the deadlines; `util.fold` lower-cases text and removes accents for matching.
+- `kinds.py` scores weighted keyword rules per document kind; the issuer category nudges the result.
+- `issuers.py` finds the issuer by sender domain, known names, «Ayuntamiento de …», a company line next to a CIF, the sender name, or an all-caps letterhead.
+- `refs.py` finds labelled references (policy, contract, invoice, expedient, bulletin) and picks the one that identifies the document for its kind; the stable one (policy, contract, supply point) keys the series.
+- `amounts.py` reads euro amounts in Spanish and English formats and picks the total, the reduced amount of a fine and the annual or monthly premium.
+- `dates.py` finds numeric and written dates and gives each a role from the words around it.
+- `periods.py` reads relative periods («20 días naturales», «10 días hábiles», «tres meses») with their purpose and base.
+- `deadlines.py` turns roles and periods into drafts, using `rules.py` for the legal calculations; see [RULES.md](RULES.md).
+- `llm.py` is the optional model pass: only for documents left in review; hints are accepted only when the date is written in the evidence it cites.
+- `pipeline.py` runs the steps in order and computes the confidence.
+
+Nothing in `extract/` touches the database, the clock or the network; `Ctx` carries today, the calendar, the language and the user's overrides, which is why the tests can run it on invented text.
+
+## Deadlines
+
+A deadline has a key (`payment`, `renewal`, `cancel_by`, `warranty`, `appeal:10d`, …), a date, a basis (human text with the rule), the evidence and page, lead days, an amount, recurring (`none`, `monthly`, `yearly`) and flags `auto` (created by the extraction) and `edited` (touched by the user). Reading a document again replaces its `auto` deadlines except the ones you edited or closed. Marking a recurring deadline done moves it to its next occurrence; housekeeping also rolls recurring deadlines left open three days past their date.
+
+Deadlines of other apps carry `source` (the app id) and `external_key` (unique together), `ext_date` (the last date the app sent), `rule`, `basis` and `url`. `engine.upsert_external` creates or updates them; `engine.update_external` closes, reopens or reschedules them. See [RULES.md](RULES.md#deadlines-from-other-apps).
+
+## Reminders
+
+`run_reminders` runs every ten minutes. For each open deadline it finds the lead days that have arrived and were not yet notified, sends one notification for the most urgent, and records all of them. Overdue deadlines get one notification up to 14 days late. Night hours defer everything except (optionally) high severity. Notifications go to the enabled channels whose minimum severity is met; each has a dedupe key, so a restart never repeats one. History is quiet: old mails and files create past deadlines as done and no notifications.
+
+## Series and prices
+
+Insurance, subscriptions and optionally utility bills with the same issuer and stable reference join a series. A new document with an amount that differs by the configured percentage from the previous one raises a `price_change` notification; `series_list` and `price_history` show the evolution.
+
+## Mail
+
+The Faustus mail helper is the family's `hoard_link/mail_helper.py`: `fam_mail.FaustusHelper` starts it with Faustus's Python inside the Faustus folder, writes one JSON request to stdin and reads one JSON line. It reuses Faustus's mail server module to resolve accounts, so passwords never leave Faustus (Kafka's own `KAFKA_*` secrets are removed from its environment). A scan returns candidate messages (paperwork words in the subject or body, or a PDF/image attachment) and writes each attachment of 15 MB or less to the cache folder as `<sha256>.<ext>`. `classify.py` labels each message `doc`, `maybe` or `noise`; documents are filed, doubtful mails wait in Revisión, noise is remembered so it is not shown again. The first scan looks back `mail.first_days` (180) and is quiet. The same helper sends notification mails.
+
+## Tools, API and MCP
+
+`agent_tools.TOOLS` is the single catalogue. `GET /api/agent/tools` and `POST /api/agent/call` serve it to assistants with the bearer token from `data/mcp-token`: results are capped and personal identifiers are masked unless `reveal` is set. `POST /api/ui/call` serves the same handlers to the bundled UI uncapped and unmasked (the app only listens on 127.0.0.1 and the guard rejects cross-site requests). `mcp_server.py` exposes the catalogue over stdio as the `kafka-hoard` server and proxies to the running app. `docs/API.md` is generated from the catalogue by `scripts/gen_api_doc.py`; a test fails when it is out of date. The agent route is accountable (HoardLink 0.8.2): `reasons=True` makes every write tool need a `reason`; writes are journaled in `data/agent_journal.jsonl`; `kafka_hoard/agent_undo.py` holds, per tool, the `capture` (state before), `track` (objects touched and a fingerprint) and `undo` hooks that `POST /api/agent/undo` uses, plus the set of `draftSafeHint` tools a `drafts` token may call. The UI route (`/api/ui/call`) is not an agent and needs no reason. Documents and their deadlines are one unit for conflicts; the fingerprint ignores `notified` and the extraction timestamps.
+
+`workshop/printcraft.py` hosts `KafkaPdf` and the historical `PrintCraft` import alias. It resolves only the owned `native/bin/kafka-pdf-worker`, built from 26 incorporated engine crates and local patched PDF libraries. `kafka-pdf-batch/v1` batches run within a copied workspace; `kafka-pdf-result/v1` returns JSON results and real rendered PNG files. Every saved artifact keeps the existing receipt table and source/output hashes. The 123 operations have primary `pdf_*` names and historical `printcraft_*` aliases with the same handlers and schemas; four own workflow/catalogue/status/history names bring the full catalogue to 314. Legacy executable settings and environment variables are ignored for execution, preserving their stored values. Font/script and optional OCR/Office dependencies retain their existing limitations. Native source provenance, notices, locked dependencies and the build command live in `native/pdf`.
+
+## Workshop
+
+`kafka_hoard/workshop/service.py` holds the operations as plain methods with keyword-only arguments; `agent_tools.py` wraps them in twelve tools (`pdf_merge`, `pdf_split`, `pdf_pages`, `pdf_compress`, `pdf_protect`, `pdf_watermark`, `pdf_info`, `pdf_metadata_set`, `pdf_from_images`, `pdf_from_office`, `pdf_to_images`, `images_compress`), so the UI, the agent route and MCP run the same code. Everything that touches the machine (Ghostscript, Word through PowerShell, LibreOffice, `PATH`, the environment) goes through an injectable `Env`, which is how the tests fake those programs.
+
+Inputs are an absolute path or a document id. Results never overwrite: files are created exclusively and a taken name gets « (2)». The output folder depends on the source: an upload goes to `data/workshop/out/<job>`, a stored document to the `workshop.dir` setting, a path next to itself; `paths.unsafe_output_dir` refuses system, hidden and data folders. Produced files are remembered in a registry for `GET /api/workshop/file`, which serves only those and the files under `data/workshop/`. Passwords exist only in memory for the duration of a call and are redacted from the echoed options. `engine.housekeeping` deletes job folders older than 7 days. Compression uses Ghostscript when found, otherwise pypdf with images re-encoded through a quality and size ladder, and with `target_mb` it climbs the ladder until the file fits or reports that it cannot. The text watermark is a one-page overlay written as a raw content stream (Helvetica, rotation matrix, an ExtGState for opacity) merged onto each page. Long image batches stop after `time_limit_s` and report what is left; repeating with the same output folder continues.
+
+## Client
+
+Hash routing (`#/plazos`, `#/documentos`, `#/documentos/<id>?p=2`, `#/revision`, `#/taller`, `#/ajustes`). Strings are in `client/src/i18n.js` as `[español, English]` pairs. Colours come from the shared `hoard-theme.css` (vendored unchanged from the family) selected by `data-hoard-app="kafka"`. A shared `version` counter, bumped by `changed()`, refreshes every page after any change. Files can be dropped anywhere on the window.
+
+## Data
+
+Everything lives in `data/` (or `KAFKA_DATA_DIR`): `kafka.db`, `files/` (originals), `cache/` (page images, mail attachments awaiting filing), `inbox/` (default watched folder), `workshop/` (`in/<job>` uploads, `out/<job>` results, purged after 7 days), `mcp-token`, `url`, `logs/`. Back up the folder to back up the app.
+
+## The family hub
+
+- **Notifications.** `notify.send` sends through the hub (`fam_notify`) when `notify.via` is `auto` and the hub is up, or `hub`; any failure in `auto` falls back to the own channels and leaves a failed `hub_notify` marker. `own` never calls the hub.
+- **Mail.** `mail.source.MailSource` wraps `fam_mail.MailRouter`: it reads from the hub's mail gateway (interest registered with the paperwork words and attachments, watermark `mail.hub_since_id` that moves only after the scan is filed, attachments copied into Kafka's own mail cache) or from the Faustus helper. Each filed mail is claimed with the document reference.
+- **Agenda.** `agenda.items` feeds `GET /api/family/agenda` (installed in `main.py`); the manifest announces it with `x-family.agenda`.
+- **Events.** Emitted by the engine: `kafka.document.archived`, `kafka.warranty.created`, `kafka.deadline.created`, `kafka.deadline.soon` and `kafka.deadline.overdue`. The last two go once per deadline, date and state (markers in the settings table). History is quiet, so none are emitted for old documents.
+- **Ledger link.** `engine.link_ledger` asks Ledger's `tx_find`, links one strong match (score of 0.8 or more, and only one) with `tx_attach_doc` and a reference, and keeps the movement in the document's facts (`ledger_tx`). `retry_ledger_links` runs from housekeeping once a day for documents of the last 45 days.
+- **Cross-app tools.** `deadline_add` (idempotent by `source_ref` and title), `deadlines_from_minutes` (Funes `minutes_get`), `tax_pack`, `document_link_tx`. Calls to other apps go through `Engine._fcall`, which never raises.
+
+## Optional native OCR
+
+The family's `DocService` keeps all page text, including repeated headings,
+labels and rows. It does not run cross-page line deduplication: ignoring digits
+when comparing lines can erase changing amounts from otherwise similar tables.
+This differs from any ingestion-specific normalization used by deadline parsing.
+`scripts/eval_document_ocr.py` exercises this service on invented raster PDFs and
+can score external page predictions, so both OCR and postprocessing are measured.
+
+`ocr/light.py` implements the existing backend contract through `scripts/light_ocr.mjs`. The optional pinned Node package bundles its native model. Images travel as bounded PNG bytes on stdin, not paths; the worker returns text, confidence and boxes as JSON and runs on CPU. Process errors omit stderr and use the existing backend fallback. All document tools and family clients share this adapter through `Ocr`; there is no second document service.
+
+## Archived text comparison
+
+`doccompare.py` is a pure line alignment over page text. `doc_compare` reads selected pages from the store, retains page provenance, applies existing assistant masking before sizing/pagination, and returns bounded change excerpts. It does not re-extract files, edit state, generate notifications or calculate deadlines.

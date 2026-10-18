@@ -1,5 +1,18 @@
 # Borges's Hoard
 
+## Library, saved articles and paperwork
+
+Borges now incorporates **Links and Kafka**, including their full native interfaces and functions: cited library search, saved articles and highlights, media, original paperwork, OCR, PDF editing, invoices, contracts, deadlines and reminders. Three independently enabled modules, all initially OFF. Background automation has separate controls, also OFF. MCP discovers all 378 tools without starting servers or engines.
+
+Native interfaces are under `/library/`, `/links/` and `/paperwork/`. Borges hosts the Python engines and a Node stdio engine with no additional listening port. Shared search consults only active modules and preserves their native citations. Neither original server is needed.
+
+Install `python -m pip install -r requirements.txt` and `npm ci --prefix links_native`. Build the owned PDF engine with `python scripts/build_pdf_engine.py` (Rust 1.95.0). Start explicitly with `python -m borges --no-browser` or Hoard Hub. Built interfaces ship in this repository.
+
+With every module OFF, adopt existing data using `python scripts/adopt_fusion_data.py --parent "C:\path\Hoards"`. This writes only the central map; original data stays in its original directories, which must be kept. [Operation, installation and limits](docs/FUSION.md) · [Complete tools](provenance/CAPABILITIES.md) · [Source provenance](provenance/sources.json).
+
+The library-specific documentation below remains applicable; native library API routes now have the `/library` prefix, and startup no longer preloads models or indexes.
+
+
 Your personal library, indexed on your own PC. Point it at folders of documents (PDF, DOCX, PPTX, Markdown, TXT, EPUB, HTML, CSV) and ask "where did I read/write about X": every answer comes with an exact citation — `«Title», p. 12` or `notes.md § Section` — and the full passage to read. An assistant reaches the same index through MCP, so it can quote your documents instead of guessing.
 
 Everything stays on the machine: SQLite for text and vectors, a small multilingual embedding model that runs on the CPU, no accounts, no network beyond the one-time model download.

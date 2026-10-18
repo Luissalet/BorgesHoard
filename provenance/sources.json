@@ -1,0 +1,14 @@
+[
+  {
+    "origin": "https://github.com/Luissalet/LinksHoard",
+    "commit": "b9862d5d48038229a0f943d43aedb695edff718c",
+    "files": 129,
+    "data": "not copied; adopt explicit paths in place"
+  },
+  {
+    "origin": "https://github.com/Luissalet/KafkaHoard",
+    "commit": "465f50dfdbed610ba9242b45a2b12b0186e3acd2",
+    "files": 713,
+    "data": "not copied; adopt explicit paths in place"
+  }
+]
