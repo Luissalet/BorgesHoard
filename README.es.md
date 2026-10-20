@@ -1,3 +1,7 @@
+> **Absorbido por [Writer's Hoard](https://github.com/Luissalet/Writers-Hoard-Desktop).**
+> Las funciones de este proyecto se mantienen en el Hoard fusionado, con módulos independientes y apagados inicialmente.
+> El código y las instrucciones siguientes se conservan como referencia histórica; usa el repositorio enlazado para la instalación actual.
+
 # Borges's Hoard
 
 ## Biblioteca, lecturas y trámites
